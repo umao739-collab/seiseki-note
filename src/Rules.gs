@@ -1,9 +1,9 @@
 /**
  * Rules.gs — 入力の検査と、文字・数のそろえ方（純粋関数）。
  *
- * シートや Session に触らない。tools/run-local-tests.js で Node からも試せる。
+ * シートや Session に触らない。tools/run-local-tests.js が Node から試す。
+ * 画面から来る値は「どれを変えたいか」の指定にすぎない。ここで形・範囲・名簿にあるかを確かめてから使う。
  */
-
 function normEmail_(s) { return String(s === null || s === undefined ? '' : s).trim().toLowerCase(); }
 
 /** 先頭が = + - @ ' の文字列は、シートで数式にならないように ' を付ける。 */
@@ -12,85 +12,206 @@ function escapeFormula_(s) {
   return /^[=+\-@']/.test(s) ? "'" + s : s;
 }
 
-/** 全角の数字・記号を半角にし、前後の空白を取る。 */
+/** 全角の数字・英字・記号（－ ．）を半角にし、前後の空白を取る。 */
 function toHalf_(v) {
   return String(v === null || v === undefined ? '' : v).trim()
-    .replace(/[０-９．－]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    .replace(/[０-９Ａ-Ｚａ-ｚ．－]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
 }
 
-/** 点数として読めれば数、読めなければ null（空・「欠」・#REF! など）。 */
-function toScore_(v) {
-  var s = toHalf_(v);
-  if (!/^-?\d+(\.\d+)?$/.test(s)) return null;
-  var n = Number(s);
-  return isFinite(n) && n >= 0 ? n : null;
+/** クラスの書き方をそろえる（３－１ → 3-1）。正しくなければ ''。 */
+function normClassKey_(v) {
+  var s = toHalf_(v).replace(/[ー―‐]/g, '-');
+  var m = /^([1-6])-([0-9A-Za-z぀-ヿ一-鿿]{1,6})$/.exec(s);
+  if (!m) return '';
+  return m[1] + '-' + m[2].replace(/^0+(?=\d)/, '');
+}
+function gradeOf_(classKey) { return Number(String(classKey).split('-')[0]); }
+function classLabel_(classKey) { var p = String(classKey).split('-'); return p[0] + '年' + p[1] + '組'; }
+
+/** 4月はじまりの年度。 */
+function fiscalYearOf_(yyyymmdd) {
+  var m = /^(\d{4})-(\d{2})/.exec(String(yyyymmdd));
+  var y = Number(m[1]), mo = Number(m[2]);
+  return String(mo >= 4 ? y : y - 1);
 }
 
-/** Drive のファイル ID の形か。 */
-function isFileId_(id) {
-  return typeof id === 'string' && /^[A-Za-z0-9_-]{20,128}$/.test(id);
+function termsOf_(termSystem) { return TERM_LABELS[termSystem] || TERM_LABELS['3学期制']; }
+
+function checkText_(v, max, what, allowEmpty) {
+  var s = String(v === null || v === undefined ? '' : v).replace(/\r\n?/g, '\n').trim();
+  if (!allowEmpty && !s) throw appError_(what + 'を入れてください。');
+  if (s.length > max) throw appError_(what + 'は' + max + '字までです。');
+  return s;
+}
+function checkInt_(v, min, max, what) {
+  var n = Number(toHalf_(v));
+  if (!isFinite(n) || Math.round(n) !== n || n < min || n > max) throw appError_(what + 'は' + min + '〜' + max + 'の数にしてください。');
+  return n;
+}
+function checkArray_(v, max) {
+  if (!Array.isArray(v) || v.length > max) throw appError_('入力の形が正しくありません。');
+  return v;
+}
+function checkObject_(v) {
+  if (!v || typeof v !== 'object' || Array.isArray(v)) throw appError_('入力の形が正しくありません。');
+  return v;
 }
 
-/** スプレッドシートの URL から ID を取り出す。取り出せなければ ''。 */
-function fileIdFromUrl_(url) {
-  var s = String(url || '').trim();
-  if (s.length > MAX_LEN.url) return '';
-  var m = /^https:\/\/docs\.google\.com\/spreadsheets\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{20,128})(?:[\/?#]|$)/.exec(s);
-  return m ? m[1] : '';
-}
+// ================= 教科・観点・基準 =================
 
-/** 設定の検査。知らない項目は捨て、範囲の外は断る。 */
-function validateSettings_(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) throw appError_('設定の形が正しくありません。');
-  var out = {};
-  Object.keys(SETTINGS_DEFAULT).forEach(function (k) { out[k] = SETTINGS_DEFAULT[k]; });
-  ['strongRate', 'weakRate'].forEach(function (k) {
-    if (input[k] === undefined) return;
-    var n = Number(input[k]);
-    var r = SETTINGS_RANGE[k];
-    if (!isFinite(n) || Math.round(n) !== n || n < r[0] || n > r[1]) throw appError_('数の設定が範囲の外です。');
-    out[k] = n;
+/** 学年の教科の設定を検査する。subjects = [{name, kanten:[{label, gg, test, into, a, b}], total:{a,b,r3,r2}, hyoteiTerm, hyoteiYear}] */
+function validateGradeSubjects_(subjects) {
+  checkArray_(subjects, 20);
+  if (!subjects.length) throw appError_('教科を1つ以上入れてください。');
+  var names = {};
+  return subjects.map(function (s) {
+    checkObject_(s);
+    var name = checkText_(s.name, MAX_LEN.subject, '教科の名前');
+    if (names[name]) throw appError_('「' + name + '」が2回入っています。');
+    names[name] = true;
+    checkArray_(s.kanten, 10);
+    var labels = {};
+    var kanten = s.kanten.map(function (k) {
+      checkObject_(k);
+      var label = checkText_(k.label, MAX_LEN.kanten, '観点の名前');
+      if (labels[label]) throw appError_(name + 'の観点「' + label + '」が2回入っています。');
+      labels[label] = true;
+      var gg = String(k.gg || '');
+      if (['', '知', '思', '主'].indexOf(gg) === -1) throw appError_('GGの列は「知・思・主」のどれかにしてください。');
+      var out = { label: label, gg: gg, test: k.test === true };
+      if (out.test) {
+        out.a = checkInt_(k.a, 1, 100, 'Aの基準');
+        out.b = checkInt_(k.b, 0, 100, 'Bの基準');
+        if (out.b >= out.a) throw appError_(name + '「' + label + '」のBの基準は、Aより小さくしてください。');
+      }
+      if (k.into) out.into = String(k.into);
+      return out;
+    });
+    kanten.forEach(function (k) {
+      if (k.into && (!labels[k.into] || kanten.some(function (x) { return x.label === k.into && (x.into || !x.test); }))) {
+        throw appError_(name + '「' + k.label + '」のまとめ先が正しくありません。');
+      }
+      if (k.into && k.gg) throw appError_(name + '「' + k.label + '」は、まとめ先があるのでGGの列はいりません。');
+    });
+    if (!kanten.some(function (k) { return !k.into; })) throw appError_(name + 'に観点を入れてください。');
+    checkObject_(s.total);
+    var total = { a: checkInt_(s.total.a, 1, 100, 'Aの基準'), b: checkInt_(s.total.b, 0, 100, 'Bの基準'),
+      r3: Number(s.total.r3), r2: Number(s.total.r2) };
+    if (!(total.r3 > total.r2 && total.r2 >= 1 && total.r3 <= 3)) throw appError_(name + 'の評定の基準が正しくありません（1〜3で、評定3の基準を大きく）。');
+    return { name: name, kanten: kanten, total: total, hyoteiTerm: s.hyoteiTerm === true, hyoteiYear: s.hyoteiYear === true };
   });
-  if (out.weakRate >= out.strongRate) throw appError_('「のびしろ」の基準は、「とくい」の基準より小さくしてください。');
-  if (input.shokenLength !== undefined) {
-    if (SHOKEN_LENGTHS.indexOf(input.shokenLength) === -1) throw appError_('所見の長さの設定が正しくありません。');
-    out.shokenLength = input.shokenLength;
-  }
-  ['showClassAvg', 'includeChallenge'].forEach(function (k) {
-    if (input[k] === undefined) return;
-    if (typeof input[k] !== 'boolean') throw appError_('設定の形が正しくありません。');
-    out[k] = input[k];
-  });
-  return out;
 }
 
-/** 保存してある設定を読む（こわれていたら初期値）。 */
-function parseSettings_(json) {
-  try {
-    return validateSettings_(JSON.parse(json || '{}'));
-  } catch (e) {
-    return validateSettings_({});
-  }
+// ================= テスト =================
+
+/** テストの登録の検査。tests = [{testId?, name, points:{観点: 配点}}]。並び順は配列の順。 */
+function validateTests_(tests, subjectConf) {
+  checkArray_(tests, MAX_TESTS_PER_TERM);
+  var allowed = subjectConf.kanten.filter(function (k) { return k.test; }).map(function (k) { return k.label; });
+  var names = {};
+  return tests.map(function (t, i) {
+    checkObject_(t);
+    var name = checkText_(t.name, MAX_LEN.testName, 'テストの名前');
+    if (names[name]) throw appError_('テスト「' + name + '」が2回入っています。');
+    names[name] = true;
+    checkObject_(t.points);
+    var points = {};
+    Object.keys(t.points).forEach(function (label) {
+      if (allowed.indexOf(label) === -1) throw appError_('「' + label + '」は、この教科のテストの観点ではありません。');
+      var raw = t.points[label];
+      if (raw === '' || raw === null || raw === undefined) return;
+      points[label] = checkInt_(raw, 1, MAX_POINT, '「' + name + '」の配点');
+    });
+    if (!Object.keys(points).length) throw appError_('「' + name + '」に配点を1つ以上入れてください。');
+    var id = t.testId === undefined || t.testId === '' ? '' : String(t.testId);
+    if (id && !/^[A-Za-z0-9-]{8,64}$/.test(id)) throw appError_('入力の形が正しくありません。');
+    return { testId: id, name: name, order: i + 1, points: points };
+  });
 }
+
+// ================= 点数・手で入れる値・所見 =================
 
 /**
- * 所見の保存の検査。items = [{ no, term, text }]。
- * no は名簿にある番号だけ（validNos）、term は決まった書き方だけ、text は字数の上限まで。
+ * 点数の変更の検査。changes = [{studentEmail, testId, kanten, value}]。
+ * students: そのクラスの児童のメール、tests: そのクラスのテスト（testId → test）。
  */
-function validateShokenItems_(items, validNos) {
-  if (!Array.isArray(items) || !items.length || items.length > MAX_SHOKEN_BATCH) throw appError_('保存する所見の形が正しくありません。');
-  var seen = {};
-  return items.map(function (it) {
-    if (!it || typeof it !== 'object') throw appError_('保存する所見の形が正しくありません。');
-    var no = Number(it.no);
-    if (!isFinite(no) || Math.round(no) !== no || validNos.indexOf(no) === -1) throw appError_('名簿にない番号です。');
-    var term = String(it.term || '');
-    if (!TERM_RE.test(term)) throw appError_('時期の書き方が正しくありません。');
-    var text = String(it.text === null || it.text === undefined ? '' : it.text).replace(/\r\n?/g, '\n');
-    if (text.length > MAX_LEN.shoken) throw appError_('所見は' + MAX_LEN.shoken + '字までです。');
-    var key = no + '|' + term;
-    if (seen[key]) throw appError_('同じ子の同じ時期が2回入っています。');
-    seen[key] = true;
-    return { no: no, term: term, text: text };
+function validateScoreChanges_(changes, students, testsById) {
+  checkArray_(changes, MAX_CHANGES);
+  return changes.map(function (c) {
+    checkObject_(c);
+    var e = normEmail_(c.studentEmail);
+    if (students.indexOf(e) === -1) throw appError_('名簿にない児童です。');
+    var t = testsById[String(c.testId)];
+    if (!t) throw appError_('このクラスのテストではありません。');
+    var label = String(c.kanten);
+    if (!(label in t.points)) throw appError_('このテストの観点ではありません。');
+    var v = toHalf_(c.value);
+    var value = '';
+    if (v !== '') {
+      if (!/^\d+(\.\d+)?$/.test(v) || Number(v) > t.points[label]) throw appError_('「' + t.name + '」' + label + 'の点は0〜' + t.points[label] + 'にしてください。');
+      value = Number(v);
+    }
+    return { studentEmail: e, testId: t.testId, kanten: label, value: value };
   });
 }
+
+/** 先生が入れる値（主体的・手直し）の検査。field は評価の観点か「評定」。 */
+function validateManualChanges_(changes, students, subjects, terms) {
+  checkArray_(changes, MAX_CHANGES);
+  var termsOk = terms.concat([YEAR_TERM]);
+  return changes.map(function (c) {
+    checkObject_(c);
+    var e = normEmail_(c.studentEmail);
+    if (students.indexOf(e) === -1) throw appError_('名簿にない児童です。');
+    var sub = subjects.filter(function (s) { return s.name === c.subject; })[0];
+    if (!sub) throw appError_('この学年の教科ではありません。');
+    var term = String(c.term);
+    if (termsOk.indexOf(term) === -1) throw appError_('時期が正しくありません。');
+    var field = String(c.field);
+    var isHy = field === '評定';
+    if (!isHy && !sub.kanten.some(function (k) { return k.label === field && !k.into; })) throw appError_('この教科の観点ではありません。');
+    var v = toHalf_(c.value).toUpperCase();
+    if (v === '◎') v = 'A'; else if (v === '○' || v === '〇') v = 'B'; else if (v === '△') v = 'C'; else if (v === '／') v = '/';
+    var ok = isHy ? /^([1-3]|\/)?$/.test(v) : /^([ABC]|\/)?$/.test(v);
+    if (!ok) throw appError_(isHy ? '評定は 1・2・3 か / にしてください。' : '評価は A・B・C か / にしてください。');
+    return { studentEmail: e, subject: sub.name, term: term, field: field, value: v };
+  });
+}
+
+function validateShokenItems_(items, students, terms) {
+  checkArray_(items, MAX_CHANGES);
+  var termsOk = terms.concat([YEAR_TERM]);
+  return items.map(function (it) {
+    checkObject_(it);
+    var e = normEmail_(it.studentEmail);
+    if (students.indexOf(e) === -1) throw appError_('名簿にない児童です。');
+    var term = String(it.term);
+    if (termsOk.indexOf(term) === -1) throw appError_('時期が正しくありません。');
+    return { studentEmail: e, term: term, text: checkText_(it.text, MAX_LEN.shoken, '所見', true) };
+  });
+}
+
+/** 担任・担当の割り当ての検査。classes = [{classKey, homeroom, assistants:[]}]。 */
+function normalizeAssignments_(classes, schoolClasses, staff) {
+  checkArray_(classes, 100);
+  var rows = [];
+  classes.forEach(function (c) {
+    checkObject_(c);
+    var key = normClassKey_(c.classKey);
+    if (schoolClasses.indexOf(key) === -1) throw appError_('名簿にないクラスです。');
+    var hr = normEmail_(c.homeroom);
+    if (hr) {
+      if (staff.indexOf(hr) === -1) throw appError_('教職員の名簿にない先生です。');
+      rows.push({ classKey: key, email: hr, role: ASSIGN_ROLE.homeroom });
+    }
+    checkArray_(c.assistants || [], MAX_ASSISTANTS).forEach(function (a) {
+      var e = normEmail_(a);
+      if (!e) return;
+      if (staff.indexOf(e) === -1) throw appError_('教職員の名簿にない先生です。');
+      if (e !== hr && !rows.some(function (r) { return r.classKey === key && r.email === e; })) rows.push({ classKey: key, email: e, role: ASSIGN_ROLE.assistant });
+    });
+  });
+  return rows;
+}
+
+function newId_() { return Utilities.getUuid(); }

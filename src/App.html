@@ -1,72 +1,121 @@
 <script>
 /*
- * App.html — せいせきノートの画面。
+ * App.html — せいせきノートの画面（やさしい絵本）。
  *
- * ★利用者の文字（名前・単元名・所見）は textContent でだけ出す。HTML を文字列で差しこまない
- *   （tools/run-local-tests.js が見張る）。
- * ★成績はこの画面の中だけで分析する。サーバーに送り返すのは、保存する所見の文と設定だけ。
- * ★どのファイルを読むかはサーバーが決める（本人がえらんだファイルだけ）。
+ * ★利用者の文字（名前・テスト名・教科名）は textContent でだけ出す。HTML を文字列で差しこまない。
+ * ★役割と担当クラスはサーバー（bootstrap）が決める。画面で切りかえない（デモのペルソナ切替を除く）。
+ * ★計算（到達率・A/B/C・要録・評定）は Logic.html。サーバーには点数と先生が入れた値だけを送る。
  */
 (function () {
   'use strict';
-  var SL = window.SL;
-  var ALL = SL.ALL_TERMS;
-  var SUBJECT_COLOR = { '国語': '#E3779A', '社会': '#EE9550', '算数': '#5FA8E0', '理科': '#4FB68C', '生活': '#8DB955',
-    '音楽': '#A884D6', '図工': '#E9B230', '家庭': '#E08E6D', '体育': '#3FA9B8', '外国語': '#7F8FD8' };
-  function colorOf(sub) { return SUBJECT_COLOR[sub] || '#B59A80'; }
+  var SL = window.SL, Grid = window.Grid;
+  var YEAR = SL.YEAR;
+  var ABC_COLOR = { A: 'var(--A)', B: 'var(--B)', C: 'var(--C)' };
 
   // ================= 小さな道具 =================
-  /** 要素を作る。props の on* はイベント、class・style・value・checked などはそのまま。子は文字か要素。 */
   function h(tag, props) {
-    var el = document.createElement(tag);
-    var kids = Array.prototype.slice.call(arguments, 2);
+    var e = document.createElement(tag);
     Object.keys(props || {}).forEach(function (k) {
       var v = props[k];
       if (v === null || v === undefined || v === false) return;
-      if (k.slice(0, 2) === 'on') el.addEventListener(k.slice(2).toLowerCase(), v);
-      else if (k === 'class') el.className = v;
-      else if (k === 'style') Object.keys(v).forEach(function (s) { el.style[s] = v[s]; });
-      else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'selected') el[k] = v;
-      else el.setAttribute(k, String(v));
+      if (k.slice(0, 2) === 'on') e.addEventListener(k.slice(2).toLowerCase(), v);
+      else if (k === 'class') e.className = v;
+      else if (k === 'style') Object.keys(v).forEach(function (x) { e.style[x] = v[x]; });
+      else if (k === 'value' || k === 'checked' || k === 'disabled' || k === 'selected') e[k] = v;
+      else e.setAttribute(k, String(v));
     });
-    add(el, kids);
-    return el;
+    add(e, Array.prototype.slice.call(arguments, 2));
+    return e;
   }
-  function add(el, kids) {
+  function add(e, kids) {
     kids.forEach(function (c) {
       if (c === null || c === undefined || c === false) return;
-      if (Array.isArray(c)) add(el, c);
-      else el.appendChild(typeof c === 'object' ? c : document.createTextNode(String(c)));
+      if (Array.isArray(c)) add(e, c);
+      else e.appendChild(typeof c === 'object' ? c : document.createTextNode(String(c)));
     });
   }
-  var SVGNS = 'http://www.w3.org/2000/svg';
+  var NS = 'http://www.w3.org/2000/svg';
   function s(tag, attrs) {
-    var el = document.createElementNS(SVGNS, tag);
-    Object.keys(attrs || {}).forEach(function (k) { el.setAttribute(k, String(attrs[k])); });
-    add(el, Array.prototype.slice.call(arguments, 2));
-    return el;
+    var e = document.createElementNS(NS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { e.setAttribute(k, String(attrs[k])); });
+    add(e, Array.prototype.slice.call(arguments, 2));
+    return e;
   }
-  function pct(v) { return v === null || v === undefined ? '—' : Math.round(v) + '%'; }
-  function clear(el) { while (el.firstChild) el.removeChild(el.firstChild); }
+  function clear(e) { while (e.firstChild) e.removeChild(e.firstChild); }
+  function pct(v) { return v === null || v === undefined ? '' : String(Math.round(v)); }
 
-  /** マスコット「ノートちゃん」（オリジナルの絵）。 */
-  function mascot(size, mood) {
-    var mouth = mood === 'wow' ? s('ellipse', { cx: 32, cy: 41, rx: 4, ry: 5, fill: '#7A4B3A' })
-      : s('path', { d: 'M25 39 Q32 46 39 39', stroke: '#7A4B3A', 'stroke-width': 3, fill: 'none', 'stroke-linecap': 'round' });
-    return s('svg', { width: size, height: size, viewBox: '0 0 64 64', 'aria-hidden': 'true' },
-      s('rect', { x: 9, y: 8, width: 46, height: 50, rx: 12, fill: '#FFE6DC', stroke: '#FF8F6B', 'stroke-width': 3 }),
-      s('line', { x1: 17, y1: 8, x2: 17, y2: 58, stroke: '#FF8F6B', 'stroke-width': 2, 'stroke-dasharray': '3 4' }),
-      s('path', { d: 'M38 9 L38 0 Q46 4 44 10', fill: '#4FB68C' }),
-      s('circle', { cx: 26, cy: 30, r: 3.2, fill: '#4A3F35' }),
-      s('circle', { cx: 40, cy: 30, r: 3.2, fill: '#4A3F35' }),
-      s('circle', { cx: 21, cy: 37, r: 3.5, fill: '#FFB3A0', opacity: .8 }),
-      s('circle', { cx: 45, cy: 37, r: 3.5, fill: '#FFB3A0', opacity: .8 }),
+  // ================= 絵（すべてオリジナル） =================
+  var uid = 0;
+  /** 水彩のにじみ（ふちを少しゆらす）フィルター。 */
+  function wcFilter(id, scale) {
+    return s('filter', { id: id, x: '-10%', y: '-10%', width: '120%', height: '120%' },
+      s('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.035', numOctaves: '3', seed: '7', result: 't' }),
+      s('feDisplacementMap', { in: 'SourceGraphic', in2: 't', scale: scale || 7 }),
+      s('feGaussianBlur', { stdDeviation: '0.4' }));
+  }
+  /** 表紙の絵: 丘・小さな家・木・おひさま・雲。 */
+  function scene() {
+    var id = 'wc' + (++uid);
+    return s('svg', { class: 'scene', viewBox: '0 0 1200 150', preserveAspectRatio: 'xMidYMax slice', 'aria-hidden': 'true' },
+      s('defs', null, wcFilter(id, 9)),
+      s('g', { filter: 'url(#' + id + ')' },
+        s('circle', { cx: 1085, cy: 42, r: 26, fill: '#F9D8AE', opacity: .95 }),
+        s('ellipse', { cx: 760, cy: 34, rx: 46, ry: 14, fill: '#FFFFFF', opacity: .9 }),
+        s('ellipse', { cx: 795, cy: 26, rx: 30, ry: 14, fill: '#FFFFFF', opacity: .9 }),
+        s('ellipse', { cx: 520, cy: 52, rx: 38, ry: 11, fill: '#FFFFFF', opacity: .75 }),
+        s('path', { d: 'M0 128 C 180 92, 330 100, 470 120 S 760 92, 900 104 S 1110 88, 1200 100 L1200 150 L0 150 Z', fill: '#CDE5B7', opacity: .85 }),
+        s('path', { d: 'M0 140 C 220 118, 420 132, 640 128 S 980 112, 1200 132 L1200 150 L0 150 Z', fill: '#B5D69C', opacity: .8 }),
+        s('rect', { x: 948, y: 74, width: 44, height: 34, fill: '#F6C9C6' }),
+        s('path', { d: 'M940 78 L970 52 L1000 78 Z', fill: '#E28F8B' }),
+        s('rect', { x: 963, y: 88, width: 12, height: 20, fill: '#C9A27E' }),
+        s('rect', { x: 979, y: 82, width: 9, height: 9, fill: '#FFF6D8' }),
+        s('rect', { x: 1036, y: 76, width: 7, height: 30, fill: '#B48C6A' }),
+        s('circle', { cx: 1040, cy: 66, r: 22, fill: '#A9D18E', opacity: .95 }),
+        s('circle', { cx: 1056, cy: 76, r: 14, fill: '#9CC883', opacity: .9 }),
+        s('rect', { x: 846, y: 92, width: 5, height: 18, fill: '#B48C6A' }),
+        s('circle', { cx: 848, cy: 86, r: 12, fill: '#B9DBA0' }),
+        [[700, 132, '#F6C9C6'], [720, 136, '#F9D8AE'], [742, 131, '#DDD0EE'], [1120, 128, '#F6C9C6'], [1140, 134, '#F9D8AE'], [300, 136, '#DDD0EE'], [322, 132, '#F6C9C6']]
+          .map(function (f) { return s('circle', { cx: f[0], cy: f[1], r: 4, fill: f[2] }); })));
+  }
+  /** うさぎ先生（めがねのうさぎ）。 */
+  function rabbit(size, mood) {
+    var id = 'wc' + (++uid);
+    var mouth = mood === 'wow' ? s('ellipse', { cx: 40, cy: 58, rx: 3.5, ry: 4.5, fill: '#5A4636' })
+      : s('path', { d: 'M35 56 Q40 61 45 56', stroke: '#5A4636', 'stroke-width': 2.2, fill: 'none', 'stroke-linecap': 'round' });
+    return s('svg', { width: size, height: size, viewBox: '0 0 80 80', 'aria-hidden': 'true' },
+      s('defs', null, wcFilter(id, 3)),
+      s('g', { filter: 'url(#' + id + ')' },
+        s('ellipse', { cx: 29, cy: 18, rx: 7, ry: 17, fill: '#FFFDF7', stroke: '#5A4636', 'stroke-width': 2, transform: 'rotate(-12 29 18)' }),
+        s('ellipse', { cx: 51, cy: 18, rx: 7, ry: 17, fill: '#FFFDF7', stroke: '#5A4636', 'stroke-width': 2, transform: 'rotate(12 51 18)' }),
+        s('ellipse', { cx: 29, cy: 19, rx: 3, ry: 11, fill: '#F6C9C6', transform: 'rotate(-12 29 19)' }),
+        s('ellipse', { cx: 51, cy: 19, rx: 3, ry: 11, fill: '#F6C9C6', transform: 'rotate(12 51 19)' }),
+        s('circle', { cx: 40, cy: 50, r: 24, fill: '#FFFDF7', stroke: '#5A4636', 'stroke-width': 2 }),
+        s('circle', { cx: 25, cy: 56, r: 4.5, fill: '#F6C9C6', opacity: .9 }),
+        s('circle', { cx: 55, cy: 56, r: 4.5, fill: '#F6C9C6', opacity: .9 })),
+      s('circle', { cx: 32, cy: 47, r: 6.5, fill: 'none', stroke: '#8F75BE', 'stroke-width': 2 }),
+      s('circle', { cx: 48, cy: 47, r: 6.5, fill: 'none', stroke: '#8F75BE', 'stroke-width': 2 }),
+      s('line', { x1: 38.5, y1: 47, x2: 41.5, y2: 47, stroke: '#8F75BE', 'stroke-width': 2 }),
+      s('circle', { cx: 32, cy: 47, r: 2.2, fill: '#5A4636' }),
+      s('circle', { cx: 48, cy: 47, r: 2.2, fill: '#5A4636' }),
       mouth);
   }
+  /** ことり。 */
+  function bird(size, color) {
+    var id = 'wc' + (++uid);
+    return s('svg', { width: size, height: size, viewBox: '0 0 40 40', 'aria-hidden': 'true' },
+      s('defs', null, wcFilter(id, 2)),
+      s('g', { filter: 'url(#' + id + ')' },
+        s('ellipse', { cx: 19, cy: 23, rx: 13, ry: 11, fill: color || '#C7E0F3', stroke: '#5A4636', 'stroke-width': 1.6 }),
+        s('path', { d: 'M13 24 Q19 18 24 26 Q18 28 13 24 Z', fill: '#FFFDF7', opacity: .8 }),
+        s('path', { d: 'M31 21 L37 23 L31 25 Z', fill: '#DD8F4A' })),
+      s('circle', { cx: 26, cy: 19, r: 1.8, fill: '#5A4636' }),
+      s('path', { d: 'M15 34 L14 38 M21 34 L22 38', stroke: '#5A4636', 'stroke-width': 1.4, 'stroke-linecap': 'round' }));
+  }
 
-  // ================= サーバーとのやりとり =================
+  // ================= サーバー =================
   function call(fn) {
     var args = Array.prototype.slice.call(arguments, 1);
+    args.push(S.actingAs);
     return new Promise(function (resolve, reject) {
       var r = google.script.run.withSuccessHandler(resolve).withFailureHandler(function (e) {
         reject(new Error((e && e.message) || 'うまくいきませんでした。'));
@@ -77,335 +126,462 @@
 
   // ================= 状態 =================
   var S = {
-    boot: null, model: null, settings: null, view: 'loading', loadingMsg: '',
-    term: null, subject: null, sel: null,
-    files: null, fileMsg: '',
-    drafts: {}, seeds: {},
-    kohyo: { avg: true, shoken: true },
-    toast: null
+    actingAs: null, personas: window.__PERSONAS__ || [], isDemo: !!window.__IS_DEMO__,
+    boot: null, view: 'loading', msg: '', classKey: null, cd: null, tab: 'scores',
+    subject: null, term: null, pending: { scores: {}, manual: {} }, setup: null, admin: null, setupGrade: null
   };
+  function pendingCount() { return Object.keys(S.pending.scores).length + Object.keys(S.pending.manual).length; }
+  window.addEventListener('beforeunload', function (e) { if (pendingCount()) { e.preventDefault(); e.returnValue = ''; } });
 
   function toast(msg, isErr) {
-    S.toast = { msg: msg, err: !!isErr };
-    renderToast();
-    clearTimeout(toast._t);
-    toast._t = setTimeout(function () { S.toast = null; renderToast(); }, isErr ? 6000 : 2600);
-  }
-  function renderToast() {
     var old = document.getElementById('toast');
     if (old) old.parentNode.removeChild(old);
-    if (S.toast) document.body.appendChild(h('div', { id: 'toast', class: 'toast' + (S.toast.err ? ' err' : ''), role: 'status' }, S.toast.msg));
+    var t = h('div', { id: 'toast', class: 'toast' + (isErr ? ' err' : ''), role: 'status' }, msg);
+    document.body.appendChild(t);
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { if (t.parentNode) t.parentNode.removeChild(t); }, isErr ? 6500 : 2600);
   }
   function fail(e) { toast(e.message || String(e), true); }
-
-  function go(view) { S.view = view; render(); window.scrollTo(0, 0); }
-
-  function studentsOf() { return S.model ? S.model.students : []; }
-  function selStudent() {
-    var list = studentsOf();
-    if (!list.length) return null;
-    if (S.sel === null || !list.some(function (x) { return x.idx === S.sel; })) S.sel = list[0].idx;
-    return list.filter(function (x) { return x.idx === S.sel; })[0];
+  /** ことわりのダイアログ。buttons = [[文字, 値, class]]。 */
+  function ask(title, body, buttons) {
+    return new Promise(function (resolve) {
+      var veil = h('div', { class: 'veil' });
+      var box = h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true' },
+        h('div', { class: 'row', style: { alignItems: 'flex-start' } }, rabbit(54, 'wow'), h('div', { style: { flex: '1' } }, h('h3', null, title), body)),
+        h('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '14px' } }, buttons.map(function (b) {
+          return h('button', { class: 'btn ' + (b[2] || ''), onclick: function () { document.body.removeChild(veil); resolve(b[1]); } }, b[0]);
+        })));
+      veil.appendChild(box);
+      document.body.appendChild(veil);
+    });
   }
-  function profileOf(idx) { return SL.profile(S.model, idx, S.term, S.settings); }
-  function isDemo() { return S.model && S.model.source === 'demo'; }
-  function gradeLabel() {
-    var m = S.model.meta;
-    return (m.grade || '') + (m.className ? m.className + '組' : '');
+  function leaveOk() {
+    if (!pendingCount()) return Promise.resolve(true);
+    return ask('保存していない入力があります', h('p', null, 'まだ保存していない入力が ' + pendingCount() + 'マス あります。どうしますか？'),
+      [['もどる', 'back', 'plain'], ['保存しないで進む', 'drop', 'plain'], ['保存して進む', 'save', 'wakaba']]).then(function (v) {
+      if (v === 'back') return false;
+      if (v === 'drop') { S.pending = { scores: {}, manual: {} }; return reloadClass().then(function () { return true; }); }
+      return saveAll().then(function () { return true; });
+    });
   }
 
   // ================= はじめ =================
   function start() {
-    S.view = 'loading'; S.loadingMsg = 'ひらいています…'; render();
+    if (S.isDemo && !S.actingAs) { S.view = 'persona'; render(); return; }
+    S.view = 'loading'; S.msg = 'ひらいています…'; render();
     call('bootstrap').then(function (b) {
-      S.boot = b; S.settings = b.settings;
-      S.kohyo.avg = b.settings.showClassAvg;
-      if (b.file) return loadMine();
-      S.fileMsg = b.fileProblem || '';
-      go('setup');
-    }).catch(function (e) { S.view = 'error'; S.loadingMsg = e.message; render(); });
+      S.boot = b;
+      S.view = b.role === 'admin' ? 'admin' : 'home';
+      if (b.role === 'admin') return openAdmin();
+      render();
+    }).catch(function (e) { S.view = 'error'; S.msg = e.message; render(); });
   }
-  function useModel(m) {
-    SL.analyze(m);
-    S.model = m;
-    var terms = m.termLabels.filter(function (t) {
-      return m.subjects.some(function (sub) { return sub.units.some(function (u) { return u.term === t && u._st.entered > 0; }); });
-    });
-    S.term = terms.length ? terms[terms.length - 1] : (m.termLabels[0] || ALL);
-    S.subject = m.subjects.length ? m.subjects[0].name : null;
-    S.sel = null; S.drafts = {}; S.seeds = {};
-    go('home');
+  function openClass(classKey) {
+    S.view = 'loading'; S.msg = classKey.replace('-', '年') + '組の成績をひらいています…'; render();
+    call('getClassData', classKey).then(function (cd) {
+      S.cd = cd; S.classKey = classKey; S.view = 'class';
+      S.pending = { scores: {}, manual: {} };
+      if (!S.subject || !cd.subjects.some(function (x) { return x.name === S.subject; })) S.subject = cd.subjects[0].name;
+      if (!S.term || (cd.terms.indexOf(S.term) === -1 && S.term !== YEAR)) S.term = cd.terms[0];
+      if (!cd.tests.length) S.tab = 'tests';
+      render();
+    }).catch(function (e) { fail(e); S.view = 'home'; render(); });
   }
-  function loadMine() {
-    S.view = 'loading'; S.loadingMsg = '成績を読みこんでいます…（10秒ほどかかることがあります）'; render();
-    return call('loadMyClass').then(useModel).catch(function (e) { S.fileMsg = e.message; go('setup'); });
+  function reloadClass() {
+    return call('getClassData', S.classKey).then(function (cd) { S.cd = cd; render(); }).catch(fail);
   }
-  function loadDemo() {
-    S.view = 'loading'; S.loadingMsg = '見本のクラスを用意しています…'; render();
-    call('loadDemoClass').then(useModel).catch(fail);
+  function openSetup() {
+    S.view = 'loading'; S.msg = '学校の設定をひらいています…'; render();
+    call('getSchoolSetup').then(function (st) {
+      S.setup = st; S.view = 'setup';
+      if (!S.setupGrade && st.grades.length) S.setupGrade = st.grades[0].grade;
+      render();
+    }).catch(function (e) { fail(e); S.view = 'home'; render(); });
+  }
+  function openAdmin() {
+    return call('getAdminView').then(function (a) { S.admin = a; S.view = 'admin'; render(); }).catch(function (e) { S.view = 'error'; S.msg = e.message; render(); });
   }
 
-  // ================= 画面のわく =================
-  var TABS = [
-    ['home', '🏠', 'ホーム'], ['kohyo', '📄', '個票'], ['class', '📊', 'クラスの傾向'],
-    ['shoken', '✏️', '所見づくり'], ['check', '🔍', '入れわすれ'], ['settings', '⚙️', '設定']
-  ];
+  // ================= わく =================
   function render() {
     var root = document.getElementById('app');
     clear(root);
-    var top = h('div', { class: 'top' },
-      h('div', { class: 'brand' }, mascot(46), h('div', null, h('b', null, 'せいせきノート'), h('small', null, 'SMILEスプレッドシートの成績から'))),
-      S.model ? h('div', { class: 'file-chip' + (isDemo() ? ' demo' : ''), title: S.model.fileName }, (isDemo() ? '🧸 ' : '📗 ') + S.model.fileName) : null);
-    root.appendChild(top);
-    if (S.view === 'loading') { root.appendChild(h('div', { class: 'loading' }, h('div', { class: 'm' }, mascot(80)), h('p', null, S.loadingMsg))); return; }
-    if (S.view === 'error') {
-      root.appendChild(h('div', { class: 'card empty' }, mascot(80, 'wow'), h('b', null, 'ひらけませんでした'), h('p', null, S.loadingMsg),
-        h('button', { class: 'btn', onclick: start }, 'もう一度ためす')));
-      return;
-    }
-    if (S.view === 'setup' || !S.model) { root.appendChild(viewSetup()); return; }
-    root.appendChild(h('nav', { class: 'tabs' }, TABS.map(function (t) {
-      return h('button', { class: 'tab' + (S.view === t[0] ? ' on' : ''), onclick: function () { go(t[0]); } }, h('span', { class: 'ico' }, t[1]), t[2]);
-    })));
-    if (['home', 'kohyo', 'class', 'shoken'].indexOf(S.view) !== -1) root.appendChild(termBar());
-    var v = { home: viewHome, kohyo: viewKohyo, class: viewClass, shoken: viewShoken, check: viewCheck, settings: viewSettings }[S.view] || viewHome;
-    root.appendChild(v());
-  }
-  function termBar() {
-    var terms = S.model.termLabels.concat([ALL]);
-    return h('div', { class: 'termbar' }, h('span', { class: 'q' }, 'いつの成績？'),
-      terms.map(function (t) { return h('button', { class: 'chip' + (S.term === t ? ' on' : ''), onclick: function () { S.term = t; render(); } }, t); }));
+    var who = S.boot ? (S.boot.schoolName ? S.boot.schoolName + '　' : '') + S.boot.name + (S.boot.role === 'admin' ? '' : ' 先生') : '';
+    root.appendChild(h('header', { class: 'cover' }, scene(),
+      h('div', { class: 'head' }, rabbit(64), h('div', null, h('h1', null, 'せいせきノート'), h('div', { class: 'sub' }, 'テストの点から、通知表・要録・GGまで'))),
+      who ? h('div', { class: 'who' }, who) : null));
+    if (S.isDemo) root.appendChild(h('div', { class: 'demo-bar' }, '🧸 デモ（名前も点数も作りものです）',
+      S.actingAs ? h('button', { class: 'linkbtn', onclick: function () { S.actingAs = null; S.boot = null; start(); } }, '体験する人をかえる') : null));
+    var body;
+    if (S.view === 'loading') body = h('div', { class: 'loading' }, h('div', { class: 'hop' }, bird(56)), h('p', null, S.msg));
+    else if (S.view === 'error') body = h('div', { class: 'page empty' }, rabbit(90, 'wow'), h('span', { class: 'title' }, 'ひらけませんでした'), h('p', null, S.msg),
+      h('button', { class: 'btn', onclick: start }, 'もう一度ためす'));
+    else if (S.view === 'persona') body = viewPersona();
+    else if (S.view === 'home') body = viewHome();
+    else if (S.view === 'class') body = viewClass();
+    else if (S.view === 'setup') body = viewSetup();
+    else if (S.view === 'admin') body = viewAdmin();
+    root.appendChild(body);
   }
 
-  // ================= はじめに（ファイルをえらぶ） =================
-  function viewSetup() {
-    var wrap = h('div', null);
-    wrap.appendChild(h('div', { class: 'hello', style: { marginBottom: '14px' } }, mascot(70),
-      h('div', { class: 'bubble' }, h('b', null, 'はじめまして！'), h('div', null, 'いつも使っている「SMILEスプレッドシート」をえらぶだけで、個票・クラスの傾向・所見の下書きが作れます。'))));
-    wrap.appendChild(h('div', { class: 'steps' },
-      h('div', { class: 'step' }, h('i', null, '1'), 'ファイルをえらぶ'),
-      h('div', { class: 'step' }, h('i', null, '2'), '読みこみ（自動）'),
-      h('div', { class: 'step' }, h('i', null, '3'), 'できあがり！')));
-    if (S.fileMsg) wrap.appendChild(h('div', { class: 'alert' }, '⚠️', h('div', null, S.fileMsg)));
-
-    var list = h('div', { class: 'filelist' });
-    var card = h('div', { class: 'card' }, h('h2', null, '📗 あなたのSMILEファイル', h('span', { class: 'sub' }, '名前に「SMILE」が入っているスプレッドシート')), list);
-    function fill() {
-      clear(list);
-      if (S.files === null) { list.appendChild(h('p', { class: 'muted' }, 'さがしています…')); return; }
-      if (!S.files.length) { list.appendChild(h('p', { class: 'muted' }, '見つかりませんでした。下にURLをはりつけてください。')); return; }
-      S.files.forEach(function (f) {
-        list.appendChild(h('button', { onclick: function () { choose(function () { return call('chooseFile', f.id); }); } },
-          '📗', h('span', null, f.name), h('span', { class: 'd' }, f.updated + ' 更新')));
-      });
-    }
-    fill();
-    if (S.files === null) call('findMyFiles').then(function (fs) { S.files = fs; fill(); }).catch(function (e) { S.files = []; fill(); fail(e); });
-    wrap.appendChild(card);
-
-    var url = h('input', { class: 'text', type: 'url', placeholder: 'https://docs.google.com/spreadsheets/d/…', 'aria-label': 'SMILEファイルのURL' });
-    wrap.appendChild(h('div', { class: 'card' }, h('h2', null, '🔗 URLをはりつけてえらぶ'),
-      h('div', { class: 'row' }, h('div', { style: { flex: '1', minWidth: '240px' } }, url),
-        h('button', { class: 'btn', onclick: function () { choose(function () { return call('chooseFileByUrl', url.value); }); } }, 'このファイルにする'))));
-
-    wrap.appendChild(h('div', { class: 'card' }, h('h2', null, '🧸 まずは見本でためす'),
-      h('p', { class: 'muted' }, '架空のクラス（名前も点数も作りもの）で、どんなことができるか見られます。あなたのファイルは読みません。'),
-      h('button', { class: 'btn mint', onclick: loadDemo }, '見本のクラスをひらく')));
-    wrap.appendChild(safetyCard());
-    return wrap;
-  }
-  function choose(fn) {
-    S.view = 'loading'; S.loadingMsg = 'ファイルを確かめています…'; render();
-    fn().then(function () { S.fileMsg = ''; return loadMine(); }).catch(function (e) { S.fileMsg = e.message; go('setup'); });
-  }
-  function safetyCard() {
-    return h('div', { class: 'card' }, h('h2', null, '🔒 安心のしくみ'),
-      h('ul', { class: 'small', style: { margin: '0', paddingLeft: '20px' } },
-        h('li', null, '成績は、あなたのSMILEファイルから「読むだけ」です。ほかの場所に写したり、送ったりしません。'),
-        h('li', null, 'このアプリは、開いたあなたの権限で動きます。あなたが開けないファイルは読めません。'),
-        h('li', null, '所見を保存するときだけ、あなたのファイルに「所見メモ」シートを足して書きます。ほかのシートは変えません。'),
-        h('li', null, '「AIに頼む文」には、名前・番号・点数は入りません。')));
+  function viewPersona() {
+    return h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash' }, 'だれとして体験しますか？')),
+      h('div', { class: 'grid3' }, S.personas.map(function (p) {
+        return h('button', { class: 'btn plain', style: { padding: '14px', textAlign: 'left' }, onclick: function () { S.actingAs = p.email; start(); } }, p.label);
+      })));
   }
 
-  // ================= ホーム =================
+  // ================= ホーム（本だな） =================
   function viewHome() {
-    var m = S.model;
-    var wrap = h('div', null);
-    var subjects = SL.overview(m, S.term);
-    wrap.appendChild(h('div', { class: 'hello', style: { marginBottom: '14px' } }, mascot(64),
-      h('div', { class: 'bubble' }, h('b', null, gradeLabel() + 'の成績を読みこみました！'),
-        h('div', { class: 'muted' }, m.students.length + '人 ・ ' + m.subjects.length + '教科 ・ ' + (m.meta.termSystem || '')))));
-    if (isDemo()) wrap.appendChild(h('div', { class: 'note', style: { marginBottom: '14px' } }, '🧸 これは見本のデータです（架空の名前と点数）。自分のファイルを使うときは「⚙️ 設定」からえらんでください。'));
-    var miss = SL.missingCheck(m);
-    var missN = miss.reduce(function (a, x) { return a + x.missing.length; }, 0);
-    if (missN) {
-      wrap.appendChild(h('div', { class: 'alert' }, h('span', { style: { fontSize: '26px' } }, '🔍'),
-        h('div', null, h('b', null, '点数が空いているところが ' + missN + 'か所 あります'), h('div', { class: 'small' }, '入れわすれか、おやすみかを確かめておくと安心です。')),
-        h('span', { class: 'spacer' }), h('button', { class: 'btn ghost', onclick: function () { go('check'); } }, '見てみる')));
+    var b = S.boot;
+    var wrap = h('div', { class: 'stack' });
+    wrap.appendChild(h('div', { class: 'say' }, bird(52, '#F6C9C6'), h('div', { class: 'bubble' },
+      h('b', null, b.name + ' 先生、こんにちは。'), h('div', { class: 'muted' }, b.fiscalYear + '年度・' + b.termSystem + '　ひらくクラスの本をえらんでください。'))));
+    if (!b.classes.length) {
+      wrap.appendChild(h('div', { class: 'page empty' }, rabbit(90, 'wow'), h('span', { class: 'title' }, 'まだ担当のクラスがありません'),
+        h('p', { class: 'muted' }, '学校の設定担当の先生に、担任・担当の割り当てをお願いしてください。')));
+    } else {
+      wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sakura' }, 'わたしのクラス')),
+        h('div', { class: 'books' }, b.classes.map(function (c, i) {
+          return h('button', { class: 'book c' + (i % 6), onclick: function () { openClass(c.classKey); } },
+            h('div', { class: 'bl' }, c.label), h('div', { class: 'bs' }, c.count + '人'), bird(46, ['#F6C9C6', '#C7E0F3', '#CDE5B7', '#DDD0EE', '#F9D8AE', '#F7EBD3'][i % 6]));
+        }))));
     }
-    wrap.appendChild(h('div', { class: 'card' }, h('h2', null, '📚 教科ごとの学級平均', h('span', { class: 'sub' }, S.term + '・テストの到達率')),
-      h('div', { class: 'grid g3' }, subjects.map(function (x) {
-        return h('button', { class: 'tile', onclick: function () { S.subject = x.subject; go('class'); } },
-          h('span', { class: 'band', style: { background: colorOf(x.subject) } }),
-          h('div', { style: { paddingLeft: '8px' } }, h('div', { class: 'nm' }, x.subject),
-            h('div', { class: 'val' }, x.avg === null ? 'まだ' : Math.round(x.avg), x.avg === null ? null : h('small', null, '%')),
-            h('div', { class: 'muted small' }, x.units ? 'テスト ' + x.units + '回ぶん' : 'この時期のテストはまだありません')));
-      }))));
-    function action(em, title, desc, view) {
-      return h('button', { class: 'action', onclick: function () { go(view); } }, h('span', { class: 'em' }, em), h('div', null, h('b', null, title), h('span', { class: 'muted small' }, desc)));
+    if (b.isSetup) {
+      wrap.appendChild(h('div', { class: 'card soft row' }, h('span', { style: { fontSize: '28px' } }, '🔧'),
+        h('div', null, h('b', null, '学校の設定'), h('div', { class: 'muted' }, '名簿の取り込み・担任の割り当て・教科と観点・評価の基準')),
+        h('span', { class: 'spacer' }), h('button', { class: 'btn sora', onclick: openSetup }, 'ひらく')));
     }
-    wrap.appendChild(h('div', { class: 'grid g3' },
-      action('📄', '個票をつくる', '一人ずつの「とくい」「のびしろ」がひと目でわかるシート。印刷・PDFにできます。', 'kohyo'),
-      action('📊', 'クラスの傾向を見る', 'つまずきやすかった単元や、気にかけたい子がわかります。', 'class'),
-      action('✏️', '所見の下書きをつくる', 'テストの結果から文の下書き。直してそのまま保存できます。', 'shoken')));
     return wrap;
   }
 
-  // ================= 個票 =================
-  function rosterList(onPick, dotOf) {
-    return h('div', { class: 'roster' }, studentsOf().map(function (st) {
-      return h('button', { class: S.sel === st.idx ? 'on' : '', onclick: function () { S.sel = st.idx; onPick(); } },
-        h('span', { class: 'no' }, st.no), h('span', null, st.name), dotOf ? h('span', { class: 'dot ' + dotOf(st) }) : null);
-    }));
-  }
-  function moveSel(d) {
-    var list = studentsOf();
-    var i = list.findIndex(function (x) { return x.idx === S.sel; });
-    var n = list[Math.min(list.length - 1, Math.max(0, i + d))];
-    if (n) { S.sel = n.idx; render(); }
-  }
-  function viewKohyo() {
-    var st = selStudent();
-    if (!st) return h('div', { class: 'card empty' }, '名簿に子どもがいません。');
-    var p = profileOf(st.idx);
-    var tools = h('div', { class: 'card row', style: { padding: '12px 16px' } },
-      h('button', { class: 'btn ghost', onclick: function () { moveSel(-1); } }, '◀ 前の子'),
-      h('button', { class: 'btn ghost', onclick: function () { moveSel(1); } }, '次の子 ▶'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.kohyo.avg, onchange: function (e) { S.kohyo.avg = e.target.checked; render(); } }), '学級平均も表示'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.kohyo.shoken, onchange: function (e) { S.kohyo.shoken = e.target.checked; render(); } }), '所見も入れる'),
-      h('span', { class: 'spacer' }),
-      h('button', { class: 'btn sky', onclick: function () { printSheets([st]); } }, '🖨 この子を印刷'),
-      h('button', { class: 'btn', onclick: function () { printSheets(studentsOf()); } }, '🖨 全員を印刷'));
-    return h('div', { class: 'split' }, rosterList(render),
-      h('div', null, tools, reportSheet(p), h('p', { class: 'muted small' }, '💡 印刷の画面で「送信先」を「PDFに保存」にすると、PDFにできます。')));
-  }
-  function shokenTextOf(idx, no) {
-    var key = idx + '|' + S.term;
-    if (S.drafts[key] !== undefined) return S.drafts[key];
-    var saved = S.model.shoken[no + '|' + S.term];
-    return saved ? saved.text : '';
-  }
-  function barRow(label, rate, classRate, color, showAvg) {
-    return h('div', { class: 'bar' }, h('span', { class: 'lb', title: label }, label),
-      h('div', { class: 'track' },
-        h('div', { class: 'fill', style: { width: Math.max(0, Math.min(100, rate || 0)) + '%', background: color } }),
-        showAvg && classRate !== null ? h('div', { class: 'avgmark', title: '学級平均 ' + pct(classRate), style: { left: 'calc(' + Math.min(100, classRate) + '% - 1px)' } }) : null),
-      h('span', { class: 'v' }, pct(rate)));
-  }
-  function evBadge(ev) { return h('span', { class: 'ev ' + (ev || 'none') }, ev || '・'); }
-  function reportSheet(p) {
-    var m = S.model;
-    var showAvg = S.kohyo.avg;
-    var head = h('div', { class: 'sheet-head' },
-      h('div', null, h('div', { class: 'ribbon' }, '学習のようす'), h('div', { class: 'muted small', style: { marginTop: '4px' } }, p.term + '・テストの結果から')),
-      h('div', { class: 'sheet-name' }, h('small', null, gradeLabel() + '　' + p.no + '番'), h('b', null, p.name)));
-    function li(x) { return h('li', null, x.subject + '「' + SL.shortLabel(x.label) + '」' + (x.unit ? '（' + x.unit + '）' : '')); }
-    var points = h('div', { class: 'points' },
-      h('div', { class: 'pbox good' }, h('h4', null, '★ とくいなところ'),
-        p.strengths.length ? h('ul', null, p.strengths.map(li)) : h('div', { class: 'small' }, p.best ? p.best.subject + '「' + SL.shortLabel(p.best.label) + '」がよく育っています' : 'これから見つけていこう')),
-      p.growth.length ? h('div', { class: 'pbox up' }, h('h4', null, '↗ のびたところ'),
-        h('ul', null, p.growth.map(function (g) { return h('li', null, g.subject + '（' + g.from + 'より）'); }))) : null,
-      h('div', { class: 'pbox grow' }, h('h4', null, '🌱 のびしろ'),
-        p.challenges.length ? h('ul', null, p.challenges.map(li)) : h('div', { class: 'small' }, 'どの教科も、よくがんばっています')));
-    var grid = h('div', { class: 'subjgrid' }, p.subjects.map(function (sm) {
-      var color = colorOf(sm.name);
-      var shown = sm.units.slice(0, 9);
-      return h('div', { class: 'scard' },
-        h('div', { class: 'hd' }, h('span', { class: 'spill', style: { background: color } }, sm.name), evBadge(sm.eval),
-          h('span', { class: 'rt' }, pct(sm.rate))),
-        sm.kanten.map(function (k) { return barRow(SL.shortLabel(k.label), k.rate, k.classRate, color, showAvg); }),
-        h('div', { class: 'ulist' }, shown.map(function (u) {
-          return h('div', null, evBadge(u.eval), h('span', { class: 'u', title: u.name }, u.name),
-            u.tag === 'good' ? h('span', { class: 'tag good' }, '★') : u.tag === 'grow' ? h('span', { class: 'tag grow' }, '🌱') : u.tag === 'missing' ? h('span', { class: 'tag miss' }, '未') : null,
-            h('span', { class: 'r' }, pct(u.rate)));
-        }), sm.units.length > shown.length ? h('div', { class: 'muted' }, '…ほか ' + (sm.units.length - shown.length) + '単元') : null));
-    }));
-    var text = S.kohyo.shoken ? shokenTextOf(p.idx, p.no) : '';
-    return h('div', { class: 'sheet' }, head, points, grid,
-      text ? h('div', { class: 'sheet-msg' }, h('h4', null, '先生から'), h('div', { style: { whiteSpace: 'pre-wrap' } }, text)) : null,
-      h('div', { class: 'sheet-foot' }, h('span', null, showAvg ? '｜の線は学級平均です' : ''), h('span', null, 'せいせきノート')));
-  }
-  function printSheets(list) {
-    var pr = document.getElementById('print');
-    clear(pr);
-    list.forEach(function (st) { pr.appendChild(reportSheet(profileOf(st.idx))); });
-    setTimeout(function () { window.print(); }, 50);
-  }
-
-  // ================= クラスの傾向 =================
+  // ================= クラス =================
+  var CLASS_TABS = [
+    ['tests', '📚', 'テストの登録', 't1'], ['scores', '✏️', '点数を入れる', 't2'], ['term', '🌸', '学期の成績', 't3'],
+    ['year', '📖', '要録（1年間）', 't4'], ['gg', '📋', 'GGに貼る', 't5'], ['check', '🔍', '入れわすれ', 't6']
+  ];
   function viewClass() {
-    var m = S.model;
+    var cd = S.cd;
     var wrap = h('div', null);
-    wrap.appendChild(h('div', { class: 'row', style: { marginBottom: '12px' } }, m.subjects.map(function (sub) {
-      var on = S.subject === sub.name;
-      return h('button', { class: 'chip' + (on ? ' on' : ''), style: on ? { background: colorOf(sub.name), borderColor: colorOf(sub.name) } : null,
-        onclick: function () { S.subject = sub.name; render(); } }, sub.name);
+    wrap.appendChild(h('div', { class: 'row', style: { margin: '6px 0 6px' } },
+      h('button', { class: 'linkbtn', onclick: function () { leaveOk().then(function (ok) { if (ok) { S.view = 'home'; S.cd = null; render(); } }); } }, '← 本だなにもどる'),
+      h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, cd.label), h('span', { class: 'muted' }, cd.students.length + '人・' + cd.termSystem)));
+    wrap.appendChild(h('nav', { class: 'shelf' }, CLASS_TABS.map(function (t) {
+      return h('button', { class: 'tab ' + t[3] + (S.tab === t[0] ? ' on' : ''), onclick: function () {
+        if (S.tab === t[0]) return;
+        leaveOk().then(function (ok) { if (ok) { S.tab = t[0]; render(); } });
+      } }, h('span', { class: 'ico' }, t[1]), t[2]);
     })));
-    var c = SL.classView(m, S.subject, S.term, S.settings);
-    if (!c || !c.units.length) { wrap.appendChild(h('div', { class: 'card empty' }, mascot(70), h('b', null, 'この時期のテストはまだありません'))); return wrap; }
-    var color = colorOf(c.subject);
-    wrap.appendChild(h('div', { class: 'grid g2' },
-      h('div', { class: 'card' }, h('h2', null, '🌟 学級の平均', h('span', { class: 'sub' }, c.subject + '・' + c.term)),
-        h('div', { style: { fontSize: '44px', fontWeight: '900', color: color, lineHeight: '1.1', marginBottom: '8px' } }, pct(c.avg)),
-        c.kanten.map(function (k) { return barRow(SL.shortLabel(k.label), k.avg, null, color, false); })),
-      h('div', { class: 'card' }, h('h2', null, '💡 つまずきやすかった単元'),
-        c.weakUnits.length ? h('div', null, c.weakUnits.map(function (u) {
-          return h('div', { class: 'row', style: { marginBottom: '6px' } }, h('span', { class: 'tag grow' }, u.term), h('b', null, u.name), h('span', { class: 'spacer' }), h('b', null, '平均 ' + pct(u.avg)));
-        })) : h('p', { class: 'muted' }, 'どの単元も平均85%以上です。すばらしい！'),
-        c.hint ? h('div', { class: 'note', style: { marginTop: '10px' } }, h('b', null, '「' + c.hint.label + '」が少し低めです。'), h('div', null, c.hint.text)) : null)));
-
-    var legend = h('div', { class: 'legend', style: { marginBottom: '8px' } },
-      h('span', null, h('i', { style: { background: 'var(--A)' } }), 'A'), h('span', null, h('i', { style: { background: 'var(--B)' } }), 'B'), h('span', null, h('i', { style: { background: 'var(--C)' } }), 'C'));
-    wrap.appendChild(h('div', { class: 'card' }, h('h2', null, '📈 単元ごとのようす', h('span', { class: 'sub' }, '平均の到達率と、A・B・Cの人数')), legend,
-      c.units.map(function (u) {
-        var t = u.abc.A + u.abc.B + u.abc.C || 1;
-        return h('div', { class: 'bar', style: { gridTemplateColumns: 'minmax(120px, 220px) 1fr 1fr 46px' } },
-          h('span', { class: 'lb', title: u.name }, (S.term === ALL ? u.term + '　' : '') + u.name),
-          h('div', { class: 'stack', title: 'A ' + u.abc.A + '人・B ' + u.abc.B + '人・C ' + u.abc.C + '人' },
-            h('span', { style: { width: (u.abc.A / t * 100) + '%', background: 'var(--A)' } }),
-            h('span', { style: { width: (u.abc.B / t * 100) + '%', background: 'var(--B)' } }),
-            h('span', { style: { width: (u.abc.C / t * 100) + '%', background: 'var(--C)' } })),
-          h('div', { class: 'track' }, h('div', { class: 'fill', style: { width: (u.avg || 0) + '%', background: color } })),
-          h('span', { class: 'v' }, pct(u.avg)));
-      })));
-
-    wrap.appendChild(h('div', { class: 'card' }, h('h2', null, '🤝 気にかけたい子', h('span', { class: 'sub' }, '到達率が' + S.settings.weakRate + '%より低いか、Cが2つ以上（この画面だけに出ます・印刷されません）')),
-      c.support.length ? h('div', { class: 'row' }, c.support.map(function (r) {
-        return h('button', { class: 'chip', onclick: function () { S.sel = r.idx; go('kohyo'); } }, r.no + ' ' + r.name + '（' + pct(r.rate) + (r.cCount ? '・C' + r.cCount : '') + '）');
-      })) : h('p', { class: 'muted' }, '今のところ、とくに気になる子はいません。')));
-
-    var table = h('table', { class: 'heat' },
-      h('thead', null, h('tr', null, h('th', null, ''), c.units.map(function (u) { return h('th', { class: 'u', title: u.name }, u.name); }), h('th', null, '平均'))),
-      h('tbody', null, c.rows.map(function (r) {
-        return h('tr', null, h('td', { class: 'nm', onclick: function () { S.sel = r.idx; go('kohyo'); } }, r.no + ' ' + r.name),
-          r.cells.map(function (cell) { return cell ? h('td', { class: 'h' + cell.eval, title: pct(cell.rate) }, Math.round(cell.rate)) : h('td', { class: 'h0' }, '・'); }),
-          h('td', { style: { fontWeight: '900' } }, r.rate === null ? '—' : Math.round(r.rate)));
-      })));
-    wrap.appendChild(h('div', { class: 'card' }, h('h2', null, '🗂 一覧表', h('span', { class: 'sub' }, '数字は到達率（%）・色はA/B/C。名前をおすと個票へ')), h('div', { class: 'heatwrap' }, table)));
+    var page = h('div', { class: 'page' });
+    fixTerm(S.tab === 'gg' || S.tab === 'year');
+    var v = { tests: viewTests, scores: viewScores, term: viewTerm, year: viewYear, gg: viewGG, check: viewCheck }[S.tab] || viewScores;
+    page.appendChild(v());
+    wrap.appendChild(page);
     return wrap;
   }
-
-  // ================= 所見づくり =================
-  function savedOf(st) { return S.model.shoken[st.no + '|' + S.term]; }
-  function dotOf(st) {
-    var key = st.idx + '|' + S.term;
-    var saved = savedOf(st);
-    if (S.drafts[key] !== undefined && (!saved || saved.text !== S.drafts[key])) return 'draft';
-    return saved && saved.text ? 'saved' : '';
+  function subjectOf() { return S.cd.subjects.filter(function (x) { return x.name === S.subject; })[0] || S.cd.subjects[0]; }
+  /** 1年間を選べない画面では、学期にもどす。画面を作る前に呼ぶ。 */
+  function fixTerm(allowYear) {
+    if (!allowYear && S.term === YEAR) S.term = S.cd.terms[S.cd.terms.length - 1];
   }
-  function makeDraft(st) {
-    var key = st.idx + '|' + S.term;
-    return SL.shoken(profileOf(st.idx), { seed: S.seeds[key] || 0, length: S.settings.shokenLength, includeChallenge: S.settings.includeChallenge });
+  function pickers(opts) {
+    var cd = S.cd;
+    var terms = cd.terms.concat(opts.year ? [YEAR] : []);
+    fixTerm(opts.year);
+    var bar = h('div', { class: 'toolbar' });
+    bar.appendChild(h('div', { class: 'pick' }, h('span', { class: 'q' }, '教科'), cd.subjects.map(function (x) {
+      return h('button', { class: 'pill' + (S.subject === x.name ? ' on' : ''), onclick: function () {
+        leaveOk().then(function (ok) { if (ok) { S.subject = x.name; render(); } });
+      } }, x.name);
+    })));
+    if (!opts.noTerm) bar.appendChild(h('div', { class: 'pick' }, h('span', { class: 'q' }, 'いつ'), terms.map(function (t) {
+      return h('button', { class: 'pill' + (S.term === t ? ' on' : ''), onclick: function () {
+        leaveOk().then(function (ok) { if (ok) { S.term = t; render(); } });
+      } }, t);
+    })));
+    if (opts.extra) bar.appendChild(opts.extra);
+    return bar;
+  }
+  function kClass(label, gg) {
+    if (gg === '知' || /知識|技能|漢字|言葉/.test(label)) return 'k-know';
+    if (gg === '思' || /思考|判断|表現/.test(label)) return 'k-think';
+    if (gg === '主' || /主体/.test(label)) return 'k-att';
+    return '';
+  }
+  function short(label) {
+    return /思考|判断|表現/.test(label) ? '思・判・表' : /^知識/.test(label) ? '知・技' : /主体/.test(label) ? '主体的' : label;
+  }
+  function gridHelp() {
+    return h('div', { class: 'gridhelp' },
+      h('span', null, h('kbd', null, '矢印'), 'でうごく'), h('span', null, h('kbd', null, 'Enter'), 'で下へ'),
+      h('span', null, h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'V'), 'で Excel・GG からまとめて貼りつけ'),
+      h('span', null, h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'C'), 'でコピー'),
+      h('span', null, h('kbd', null, 'Delete'), 'で消す'), h('span', null, h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'Z'), 'でもどす'),
+      h('span', null, 'Mac は Ctrl のかわりに ⌘'));
+  }
+  function saveBar() {
+    var n = pendingCount();
+    return h('div', { class: 'savebar' + (n ? '' : ' clean') },
+      n ? h('span', null, '✏️ 保存していない入力が ', h('b', null, n), ' マスあります') : h('span', null, '🌱 ぜんぶ保存されています'),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn wakaba', disabled: !n, onclick: function () { saveAll(); } }, '💾 保存する'));
+  }
+  function refreshSaveBar() {
+    var old = document.querySelector('.savebar');
+    if (old) old.parentNode.replaceChild(saveBar(), old);
+  }
+  function saveAll() {
+    var cd = S.cd;
+    var sc = Object.keys(S.pending.scores).map(function (k) { var p = k.split('|'); return { testId: p[0], studentEmail: p[1], kanten: p.slice(2).join('|'), value: S.pending.scores[k] }; });
+    var mn = Object.keys(S.pending.manual).map(function (k) { var p = k.split('|'); return { studentEmail: p[0], subject: p[1], term: p[2], field: p[3], value: S.pending.manual[k] }; });
+    var jobs = [];
+    if (sc.length) jobs.push(call('saveScores', cd.classKey, sc));
+    if (mn.length) jobs.push(call('saveManual', cd.classKey, mn));
+    var btn = document.querySelector('.savebar .btn');
+    if (btn) { btn.disabled = true; btn.textContent = '保存しています…'; }
+    return Promise.all(jobs).then(function () {
+      S.pending = { scores: {}, manual: {} };
+      toast('保存しました（' + (sc.length + mn.length) + 'マス）');
+      refreshSaveBar();
+    }).catch(function (e) { fail(e); refreshSaveBar(); throw e; });
+  }
+
+  // ---------- テストの登録 ----------
+  function viewTests() {
+    var cd = S.cd, sub = subjectOf();
+    var tk = SL.testKanten(sub);
+    var list = SL.testsOf(cd, sub.name, S.term).map(function (t) { return { testId: t.testId, name: t.name, points: JSON.parse(JSON.stringify(t.points)) }; });
+    var box = h('div', null);
+    var dirty = false;
+    function scoreCount(testId) {
+      var sc = cd.scores[testId] || {};
+      return Object.keys(sc).filter(function (k) { return Object.keys(sc[k]).length; }).length;
+    }
+    function draw() {
+      clear(box);
+      var table = h('table', { class: 'form' },
+        h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'テスト（単元）の名前'),
+          tk.map(function (k) { return h('th', { class: kClass(k.label, k.gg) }, short(k.label) + 'の配点'); }), h('th', null, '合計'), h('th', null, ''))),
+        h('tbody', null, list.map(function (t, i) {
+          var total = Object.keys(t.points).reduce(function (s2, l) { return s2 + (Number(t.points[l]) || 0); }, 0);
+          return h('tr', null,
+            h('td', { class: 'muted' }, i + 1),
+            h('td', null, h('input', { class: 'text', style: { width: '100%', minWidth: '180px' }, value: t.name, maxlength: 40, placeholder: '例: わり算', oninput: function (e) { t.name = e.target.value; dirty = true; } })),
+            tk.map(function (k) {
+              return h('td', null, h('input', { class: 'text num', inputmode: 'numeric', value: t.points[k.label] === undefined ? '' : t.points[k.label], placeholder: '—',
+                oninput: function (e) { var v = e.target.value.trim(); if (v === '') delete t.points[k.label]; else t.points[k.label] = v; dirty = true; } }));
+            }),
+            h('td', { class: 'muted' }, total || ''),
+            h('td', { style: { whiteSpace: 'nowrap' } },
+              h('button', { class: 'btn plain', title: '上へ', disabled: i === 0, onclick: function () { list.splice(i - 1, 0, list.splice(i, 1)[0]); dirty = true; draw(); } }, '▲'),
+              h('button', { class: 'btn plain', title: '下へ', disabled: i === list.length - 1, onclick: function () { list.splice(i + 1, 0, list.splice(i, 1)[0]); dirty = true; draw(); } }, '▼'),
+              h('button', { class: 'btn plain', title: '消す', onclick: function () {
+                var n = t.testId ? scoreCount(t.testId) : 0;
+                (n ? ask('「' + (t.name || 'このテスト') + '」を消しますか？', h('p', null, 'もう ' + n + '人ぶんの点数が入っています。保存すると、その点数も消えます。'), [['やめる', false, 'plain'], ['消す', true, 'sakura']]) : Promise.resolve(true))
+                  .then(function (ok) { if (ok) { list.splice(i, 1); dirty = true; draw(); } });
+              } }, '🗑')));
+        })));
+      box.appendChild(list.length ? table : h('div', { class: 'empty' }, bird(60), h('span', { class: 'title' }, 'まだテストがありません'), h('p', { class: 'muted' }, '下の「＋ テストを足す」から登録してください。')));
+      box.appendChild(h('div', { class: 'row', style: { marginTop: '12px' } },
+        h('button', { class: 'btn plain', onclick: function () { list.push({ testId: '', name: '', points: {} }); dirty = true; draw(); } }, '＋ テストを足す'),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn wakaba', onclick: save }, '💾 このテストで登録する'),
+        cd.sameGrade.length ? h('button', { class: 'btn sora', onclick: copyDialog }, '👯 同じ学年のクラスにも反映') : null));
+    }
+    function save() {
+      var payload = list.map(function (t) { return { testId: t.testId, name: t.name, points: t.points }; });
+      return call('saveTests', cd.classKey, sub.name, S.term, payload).then(function (r) {
+        cd.tests = r.tests; dirty = false;
+        toast(sub.name + '・' + S.term + 'のテストを登録しました');
+        return reloadClass();
+      }).catch(function (e) { fail(e); throw e; });
+    }
+    function copyDialog() {
+      (dirty ? save() : Promise.resolve()).then(function () {
+        var chosen = {};
+        var body = h('div', null, h('p', null, sub.name + '・' + S.term + 'のテスト（名前と配点）を、ほかのクラスにも写します。'),
+          h('p', { class: 'muted small' }, '同じ名前のテストは配点をそろえます。写す先にしかないテストと、もう入っている点数は消しません。'),
+          cd.sameGrade.map(function (c) { return h('div', null, h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: function (e) { chosen[c.classKey] = e.target.checked; } }), c.label)); }));
+        return ask('同じ学年のクラスにも反映', body, [['やめる', false, 'plain'], ['反映する', true, 'sora']]).then(function (ok) {
+          var targets = Object.keys(chosen).filter(function (k) { return chosen[k]; });
+          if (!ok || !targets.length) return;
+          return call('copyTestsToClasses', cd.classKey, sub.name, S.term, targets).then(function (r) { toast(r.copied.join('・') + ' に反映しました'); });
+        });
+      }).catch(fail);
+    }
+    draw();
+    return h('div', null, pickers({}),
+      h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
+        '学期ごとに、テストの名前と、観点ごとの配点を登録します。配点が空の観点は、そのテストでは使いません。',
+        tk.some(function (k) { return k.into; }) ? h('div', { class: 'muted' }, '「' + tk.filter(function (k) { return k.into; }).map(function (k) { return k.label; }).join('・') + '」の点は「' + tk.filter(function (k) { return k.into; })[0].into + '」の評価に入ります。') : null)),
+      box);
+  }
+
+  // ---------- 点数を入れる ----------
+  function viewScores() {
+    var cd = S.cd, sub = subjectOf();
+    var tests = SL.testsOf(cd, sub.name, S.term);
+    var top = pickers({});
+    if (!tests.length) return h('div', null, top, h('div', { class: 'empty' }, bird(70), h('span', { class: 'title' }, 'この学期のテストが、まだ登録されていません'),
+      h('p', null, h('button', { class: 'btn', onclick: function () { S.tab = 'tests'; render(); } }, '📚 テストを登録する'))));
+    var order = sub.kanten.map(function (k) { return k.label; });
+    var cols = [];
+    tests.forEach(function (t, ti) {
+      var labels = Object.keys(t.points).sort(function (a, b) { return order.indexOf(a) - order.indexOf(b); });
+      labels.forEach(function (l, li) {
+        cols.push({ kind: 'score', test: t, label: short(l) + '/' + t.points[l], title: l + '（' + t.points[l] + '点満点）', kanten: l, group: (ti + 1) + '. ' + t.name,
+          cls: kClass(l) + (li === 0 ? ' gsep' : ''), editable: function () { return true; } });
+      });
+      cols.push({ kind: 'rate', test: t, label: '%', group: (ti + 1) + '. ' + t.name, title: '到達率' });
+      cols.push({ kind: 'eval', test: t, label: '評価', group: (ti + 1) + '. ' + t.name });
+    });
+    var rows = cd.students.map(function (st) { return { no: st.no, name: st.name, key: st.key }; });
+    var grid = Grid.create({
+      columns: cols, rows: rows,
+      get: function (r, c) {
+        var col = cols[c];
+        if (col.kind !== 'score') return '';
+        var v = ((cd.scores[col.test.testId] || {})[rows[r].key] || {})[col.kanten];
+        return v === undefined ? '' : v;
+      },
+      view: function (r, c) {
+        var col = cols[c];
+        if (col.kind === 'score') return null;
+        var res = SL.testResult(cd, sub, col.test, rows[r].key);
+        if (col.kind === 'rate') return { text: res ? pct(res.rate) : '' };
+        return { text: res ? res.eval : '', cls: res ? 'v' + res.eval : '' };
+      },
+      normalize: function (r, c, input) { return SL.normScore(input, cols[c].test.points[cols[c].kanten]); },
+      onChange: function (changes) {
+        changes.forEach(function (ch) {
+          var col = cols[ch.c], sk = rows[ch.r].key;
+          var sc = cd.scores[col.test.testId] = cd.scores[col.test.testId] || {};
+          var row = sc[sk] = sc[sk] || {};
+          if (ch.value === '') delete row[col.kanten]; else row[col.kanten] = ch.value;
+          S.pending.scores[[col.test.testId, sk, col.kanten].join('|')] = ch.value;
+        });
+      },
+      afterChange: function () { grid.refresh(); refreshSaveBar(); },
+      notify: toast
+    });
+    return h('div', null, top, grid.el, gridHelp(), saveBar());
+  }
+
+  // ---------- 学期の成績・要録 ----------
+  function evalGrid(term) {
+    var cd = S.cd, sub = subjectOf();
+    var isYear = term === YEAR;
+    var ks = SL.evalKanten(sub);
+    var cols = [];
+    ks.forEach(function (k) {
+      var kc = kClass(k.label, k.gg);
+      if (!isYear && k.test) cols.push({ kind: 'rate', k: k, label: '%', group: k.label, groupClass: kc, cls: kc + ' gsep', title: '学期のテストを合わせた到達率' });
+      if (isYear) cols.push({ kind: 'seq', k: k, label: cd.terms.map(function (t) { return t.charAt(0); }).join('・'), group: k.label, groupClass: kc, cls: kc + ' gsep', title: '学期ごとの評価' });
+      cols.push({ kind: 'eval', k: k, label: k.test ? '評価' : '入れる', group: k.label, groupClass: kc, cls: kc + (!isYear && !k.test ? ' gsep' : ''),
+        editable: function () { return true; } });
+    });
+    var useHy = isYear ? sub.hyoteiYear : sub.hyoteiTerm;
+    if (useHy) cols.push({ kind: 'hy', label: '評定', group: '評定', groupClass: 'k-hy', cls: 'k-hy gsep', editable: function () { return true; } });
+    var rows = cd.students.map(function (st) { return { no: st.no, name: st.name, key: st.key }; });
+    var cache = {};
+    function ev(r) { return cache[r] || (cache[r] = SL.evalFor(cd, sub, rows[r].key, term)); }
+    function kOf(r, col) { return ev(r).kanten.filter(function (x) { return x.label === col.k.label; })[0]; }
+    var grid = Grid.create({
+      columns: cols, rows: rows,
+      get: function (r, c) {
+        var col = cols[c];
+        if (col.kind === 'eval') return kOf(r, col).manual;
+        if (col.kind === 'hy') return ev(r).hyotei.manual;
+        return '';
+      },
+      view: function (r, c) {
+        var col = cols[c];
+        if (col.kind === 'rate') { var k0 = kOf(r, col); return { text: pct(k0.rate) }; }
+        if (col.kind === 'seq') { var k1 = kOf(r, col); return { text: k1.terms.map(function (x) { return x || '・'; }).join(' ') }; }
+        var x = col.kind === 'hy' ? ev(r).hyotei : kOf(r, col);
+        var title = x.manual ? '先生が入れた値' + (x.auto ? '（計算では ' + x.auto + '）' : '') : (x.auto ? '計算で出した値' : '');
+        return { text: x.final, copy: x.final, cls: (x.final ? 'v' + x.final : '') + (x.manual && col.k && col.k.test || (x.manual && col.kind === 'hy') ? ' manual' : '') + (x.final === '/' ? ' slash' : ''), title: title };
+      },
+      normalize: function (r, c, input) { return cols[c].kind === 'hy' ? SL.normHyotei(input) : SL.normAbc(input); },
+      onChange: function (changes) {
+        changes.forEach(function (ch) {
+          var col = cols[ch.c], sk = rows[ch.r].key;
+          var field = col.kind === 'hy' ? '評定' : col.k.label;
+          var key = [sk, sub.name, term, field].join('|');
+          if (ch.value === '') delete cd.manual[key]; else cd.manual[key] = ch.value;
+          S.pending.manual[key] = ch.value;
+        });
+        cache = {};
+      },
+      afterChange: function () { grid.refresh(); refreshSaveBar(); },
+      notify: toast
+    });
+    return grid;
+  }
+  function viewTerm() {
+    var sub = subjectOf();
+    var grid = evalGrid(S.term);
+    return h('div', null, pickers({}),
+      h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
+        'テストの点から、学期の観点の評価を出しています（A・B の基準は ' + sub.total.a + '%・' + sub.total.b + '%）。',
+        h('br'), '「主体的に学習に取り組む態度」は、先生が A・B・C を入れてください。計算の評価を変えたいときは、そのマスに打ちこめば先生の値（✎）が優先されます。Delete で計算にもどります。')),
+      grid.el, gridHelp(), saveBar());
+  }
+  function viewYear() {
+    var cd = S.cd, sub = subjectOf();
+    var grid = evalGrid(YEAR);
+    var combo = SL.COMBO[cd.terms.length] || {};
+    return h('div', null, pickers({ noTerm: true }),
+      h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
+        '学期ごとの評価（' + cd.terms.join('・') + '）を、SMILEスプレッドシートと同じ組み合わせ表に当てて、指導要録の観点の評価を出しています。',
+        h('br'), 'すべての学期に評価が入っている観点だけが出ます。' + (sub.hyoteiYear ? '評定は、観点の評価を A=3・B=2・C=1 にした平均が ' + sub.total.r3 + '以上で3、' + sub.total.r2 + '以上で2です。' : ''),
+        h('div', null, h('button', { class: 'linkbtn', onclick: showCombo }, '組み合わせ表を見る')))),
+      grid.el, gridHelp(), saveBar());
+  }
+  function showCombo() {
+    var n = S.cd.terms.length, combo = SL.COMBO[n] || {};
+    var table = h('table', { class: 'form' }, h('thead', null, h('tr', null, S.cd.terms.map(function (t) { return h('th', null, t); }), h('th', null, '要録'))),
+      h('tbody', null, Object.keys(combo).map(function (k) {
+        return h('tr', null, k.split('').map(function (x) { return h('td', null, h('span', { class: 'ev ' + x }, x)); }), h('td', null, h('span', { class: 'ev ' + combo[k] }, combo[k])));
+      })));
+    ask('組み合わせ表', h('div', { style: { maxHeight: '50vh', overflow: 'auto' } }, table), [['とじる', true, 'plain']]);
+  }
+
+  // ---------- GGに貼る ----------
+  function viewGG() {
+    var cd = S.cd, sub = subjectOf();
+    var gcols = SL.ggColumns(cd, sub, S.term);
+    var data = SL.ggRows(cd, sub, S.term);
+    var empty = 0;
+    data.forEach(function (r) { r.cells.forEach(function (v) { if (!v) empty++; }); });
+    var cols = gcols.map(function (c) { return { label: c.label, cls: kClass(c.kanten, c.label) }; });
+    var grid = Grid.create({
+      columns: cols, rows: data.map(function (r) { return { no: r.no, name: r.name }; }),
+      get: function (r, c) { return data[r].cells[c]; },
+      view: function (r, c) { var v = data[r].cells[c]; return { text: v, cls: v ? 'v' + v : '' }; },
+      normalize: function () { return null; }, onChange: function () {}, notify: toast
+    });
+    function copyNow(withNames) {
+      var tsv = withNames ? SL.toTsv(data.map(function (r) { return [r.no, r.name].concat(r.cells); })) : grid.copyAll();
+      copyText(tsv, withNames ? '名前つきでコピーしました（たしかめ用）' : 'GG用にコピーしました（' + data.length + '人 × ' + gcols.length + '列）');
+    }
+    return h('div', null, pickers({ year: true }),
+      h('div', { class: 'grid2', style: { marginBottom: '14px' } },
+        h('div', { class: 'card' }, h('h2', null, h('span', { class: 'wash sora' }, 'GGへの貼りつけかた')),
+          h('ol', { class: 'steps small' },
+            h('li', null, 'GGで「児童生徒」＞成績「通知表」＞「教科等」をひらく'),
+            h('li', null, '「学期」「学年」「教科等」を、ここと同じにする（' + S.term + '・' + sub.name + '）'),
+            h('li', null, 'クラスをしぼりこみ、番号順になっているか確かめる'),
+            h('li', null, '下の「GG用にコピー」をおす'),
+            h('li', null, 'GGで、いちばん上の子の「' + (gcols[0] ? gcols[0].label : '知') + '」のマスをクリックして Ctrl+V（⌘V）'),
+            h('li', null, 'GGの「保存」をおす（青い保存は、保存できる合図です）'))),
+        h('div', { class: 'card' }, h('h2', null, h('span', { class: 'wash wakaba' }, 'コピーする')),
+          h('p', { class: 'small' }, '列: ', gcols.map(function (c) { return c.label; }).join('・'), '　（名前は入りません）'),
+          empty ? h('div', { class: 'note warm small' }, '空いているマスが ' + empty + 'か所 あります。空のまま貼ると、GGのそのマスは空になります。') : h('div', { class: 'note small' }, '🌱 ぜんぶのマスがうまっています'),
+          h('div', { class: 'row', style: { marginTop: '12px' } },
+            h('button', { class: 'btn big wakaba', onclick: function () { copyNow(false); } }, '📋 GG用にコピー'),
+            h('button', { class: 'btn plain', onclick: function () { copyNow(true); } }, '名前つきでコピー')))),
+      grid.el, h('div', { class: 'gridhelp' }, h('span', null, 'この表は見るだけです。範囲をえらんで Ctrl+C でもコピーできます。直すときは「学期の成績」「要録」のタブで。')));
   }
   function copyText(text, done) {
     function fallback() {
@@ -416,147 +592,133 @@
       var ok = false;
       try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
       document.body.removeChild(ta);
-      if (ok) toast(done); else toast('コピーできませんでした。文をえらんで、Ctrl+C でコピーしてください。', true);
+      toast(ok ? done : 'コピーできませんでした。表の範囲をえらんで Ctrl+C でコピーしてください。', !ok);
     }
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(function () { toast(done); }, fallback);
     else fallback();
   }
-  function saveItems(items, okMsg) {
-    if (isDemo()) { toast('見本のクラスでは保存できません（自分のファイルで使ってください）', true); return Promise.resolve(); }
-    return call('saveShoken', items).then(function (r) {
-      items.forEach(function (it) {
-        S.model.shoken[it.no + '|' + it.term] = { text: it.text, at: r.savedAt };
-        var st = studentsOf().filter(function (x) { return x.no === it.no; })[0];
-        if (st) delete S.drafts[st.idx + '|' + it.term];
-      });
-      toast(okMsg);
-      render();
-    }).catch(fail);
-  }
-  function viewShoken() {
-    var st = selStudent();
-    if (!st) return h('div', { class: 'card empty' }, '名簿に子どもがいません。');
-    var key = st.idx + '|' + S.term;
-    var p = profileOf(st.idx);
-    var saved = savedOf(st);
-    var current = S.drafts[key] !== undefined ? S.drafts[key] : saved ? saved.text : '';
-    var target = SL.SHOKEN_TARGET[S.settings.shokenLength];
 
-    var counter = h('span', { class: 'count' });
-    var ta = h('textarea', { class: 'shoken', 'aria-label': '所見', maxlength: 800, placeholder: '「✨ 下書きをつくる」をおすと、ここに文が入ります。そのまま直せます。' });
-    ta.value = current;
-    function updateCount() {
-      counter.textContent = ta.value.length + '字 ／ 目安 ' + target + '字';
-      counter.className = 'count' + (ta.value.length > target * 1.2 ? ' over' : '');
-    }
-    ta.addEventListener('input', function () { S.drafts[key] = ta.value; updateCount(); });
-    updateCount();
-    function setDraft(text) { S.drafts[key] = text; ta.value = text; updateCount(); }
-
-    var lens = [['short', '短め'], ['normal', 'ふつう'], ['long', '長め']];
-    var chips = h('div', { class: 'row', style: { marginBottom: '10px' } },
-      p.strengths.map(function (x) { return h('span', { class: 'tag good' }, '★ ' + x.subject + '・' + SL.shortLabel(x.label)); }),
-      p.growth.map(function (x) { return h('span', { class: 'tag up' }, '↗ ' + x.subject); }),
-      p.challenges.map(function (x) { return h('span', { class: 'tag grow' }, '🌱 ' + x.subject + '・' + SL.shortLabel(x.label)); }),
-      !p.strengths.length && !p.growth.length && !p.challenges.length ? h('span', { class: 'muted small' }, 'この時期のテストの結果が少ないようです') : null);
-
-    var editor = h('div', { class: 'card' },
-      h('h2', null, '✏️ ' + st.no + '番 ' + st.name, h('span', { class: 'sub' }, S.term + 'の所見')),
-      chips,
-      h('div', { class: 'row', style: { marginBottom: '10px' } },
-        h('div', { class: 'seg' }, lens.map(function (l) {
-          return h('button', { class: S.settings.shokenLength === l[0] ? 'on' : '', onclick: function () { S.settings.shokenLength = l[0]; setDraft(makeDraft(st)); render(); } }, l[1]);
-        })),
-        h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: S.settings.includeChallenge, onchange: function (e) { S.settings.includeChallenge = e.target.checked; setDraft(makeDraft(st)); render(); } }), '課題も1つ入れる'),
-        h('span', { class: 'spacer' }),
-        h('button', { class: 'btn', onclick: function () { setDraft(makeDraft(st)); render(); } }, '✨ 下書きをつくる'),
-        h('button', { class: 'btn ghost', onclick: function () { S.seeds[key] = (S.seeds[key] || 0) + 1; setDraft(makeDraft(st)); render(); } }, '🔁 別の言い方')),
-      ta,
-      h('div', { class: 'row', style: { marginTop: '8px' } }, counter, h('span', { class: 'spacer' }),
-        saved ? h('span', { class: 'muted small' }, '💾 ' + saved.at + ' に保存') : null),
-      h('div', { class: 'row', style: { marginTop: '10px' } },
-        h('button', { class: 'btn mint', disabled: isDemo(), onclick: function () { saveItems([{ no: st.no, term: S.term, text: ta.value }], st.name + 'さんの所見を保存しました'); } }, '💾 保存する'),
-        h('button', { class: 'btn ghost', onclick: function () { copyText(ta.value, 'コピーしました'); } }, '📋 コピー'),
-        h('button', { class: 'btn ghost', onclick: function () { copyText(SL.aiPrompt(p, { length: S.settings.shokenLength, grade: S.model.meta.grade }), 'AIに頼む文をコピーしました（名前・点数は入っていません）'); } }, '🤖 AIに頼む文をコピー'),
-        h('button', { class: 'btn ghost', onclick: function () { moveSel(1); } }, '次の子 ▶')),
-      isDemo() ? h('p', { class: 'muted small' }, '🧸 見本のクラスでは保存できません。') : null,
-      h('p', { class: 'muted small', style: { marginBottom: '0' } }, '※ 下書きは、テストの結果だけをもとにしています。授業中の様子など、先生にしかわからないことを書き足してください。'));
-
-    var bulk = h('div', { class: 'card row', style: { padding: '12px 16px' } },
-      h('span', { class: 'muted small row', style: { gap: '14px' } }, h('span', null, h('span', { class: 'dot saved', style: { display: 'inline-block', marginRight: '4px' } }), '保存ずみ'), h('span', null, h('span', { class: 'dot draft', style: { display: 'inline-block', marginRight: '4px' } }), '下書き（まだ保存していない）')),
-      h('span', { class: 'spacer' }),
-      h('button', { class: 'btn ghost', onclick: function () {
-        var n = 0;
-        studentsOf().forEach(function (x) {
-          var k = x.idx + '|' + S.term;
-          if (S.drafts[k] !== undefined || (savedOf(x) && savedOf(x).text)) return;
-          S.drafts[k] = makeDraft(x); n++;
-        });
-        toast(n ? n + '人ぶんの下書きを作りました（まだ書いていない子だけ）' : 'みんな、もう下書きか保存ずみです');
-        render();
-      } }, '✨ 全員の下書きをいっきに'),
-      h('button', { class: 'btn mint', disabled: isDemo(), onclick: function () {
-        var items = [];
-        studentsOf().forEach(function (x) {
-          var k = x.idx + '|' + S.term;
-          if (S.drafts[k] === undefined) return;
-          var sv = savedOf(x);
-          if (sv && sv.text === S.drafts[k]) return;
-          items.push({ no: x.no, term: S.term, text: S.drafts[k] });
-        });
-        if (!items.length) { toast('保存していない下書きはありません'); return; }
-        saveItems(items, items.length + '人ぶんの所見を保存しました');
-      } }, '💾 下書きをまとめて保存'));
-    return h('div', null, bulk, h('div', { class: 'split' }, rosterList(render, dotOf), editor));
-  }
-
-  // ================= 入れわすれ =================
+  // ---------- 入れわすれ ----------
   function viewCheck() {
-    var list = SL.missingCheck(S.model);
-    if (!list.length) return h('div', { class: 'card empty' }, mascot(90), h('b', null, 'ぜんぶ入っています！'), h('p', { class: 'muted' }, 'テストをした単元は、全員の点数が入っています。'));
-    return h('div', null,
-      h('div', { class: 'note', style: { marginBottom: '14px' } }, '🔍 何人かは点数が入っているのに、空いている子がいる単元です。おやすみでテストを受けていない子もここに出ます。SMILEファイルで確かめてください。'),
-      h('div', { class: 'grid g2' }, list.map(function (x) {
-        return h('div', { class: 'card' },
-          h('div', { class: 'row', style: { marginBottom: '6px' } }, h('span', { class: 'spill', style: { background: colorOf(x.subject) } }, x.subject), h('span', { class: 'tag miss' }, x.term), h('b', null, x.unit)),
-          h('div', { class: 'muted small', style: { marginBottom: '6px' } }, x.total + '人中 ' + x.entered + '人 入力ずみ'),
-          h('div', { class: 'row' }, x.missing.map(function (st) { return h('span', { class: 'chip', style: { cursor: 'default' } }, st.no + ' ' + st.name); })));
-      })));
+    var cd = S.cd;
+    var miss = SL.missing(cd);
+    var att = [];
+    cd.subjects.forEach(function (sub) {
+      cd.terms.forEach(function (term) {
+        if (!SL.testsOf(cd, sub.name, term).length) return;
+        SL.evalKanten(sub).filter(function (k) { return !k.test; }).forEach(function (k) {
+          var n = cd.students.filter(function (st) { return !SL.manualOf(cd, st.key, sub.name, term, k.label); }).length;
+          if (n) att.push({ sub: sub.name, term: term, label: k.label, n: n });
+        });
+      });
+    });
+    if (!miss.length && !att.length) return h('div', { class: 'empty' }, rabbit(96), h('span', { class: 'title' }, 'ぜんぶ入っています！'), h('p', { class: 'muted' }, 'テストの点も、先生が入れる評価も、空いているところはありません。'));
+    return h('div', { class: 'stack' },
+      miss.length ? h('div', null, h('h2', null, h('span', { class: 'wash' }, 'テストの点が空いている子')), h('div', { class: 'grid2' }, miss.map(function (x) {
+        return h('div', { class: 'card' }, h('div', { class: 'row' }, h('b', null, x.test.subject + '・' + x.test.term), h('span', null, '「' + x.test.name + '」'), h('span', { class: 'spacer' }),
+          h('button', { class: 'linkbtn', onclick: function () { S.subject = x.test.subject; S.term = x.test.term; S.tab = 'scores'; render(); } }, '入れにいく')),
+          h('div', { class: 'muted small' }, cd.students.length + '人中 ' + x.entered + '人 入力ずみ'),
+          h('div', { class: 'pick', style: { marginTop: '6px' } }, x.missing.map(function (st) { return h('span', { class: 'pill', style: { cursor: 'default' } }, st.no + ' ' + st.name); })));
+      }))) : null,
+      att.length ? h('div', null, h('h2', null, h('span', { class: 'wash wakaba' }, '先生が入れる評価が空いているところ')), h('div', { class: 'grid3' }, att.map(function (x) {
+        return h('div', { class: 'card' }, h('b', null, x.sub + '・' + x.term), h('div', { class: 'small' }, x.label), h('div', { class: 'muted small' }, x.n + '人 まだ'),
+          h('button', { class: 'linkbtn', onclick: function () { S.subject = x.sub; S.term = x.term; S.tab = 'term'; render(); } }, '入れにいく'));
+      }))) : null);
   }
 
-  // ================= 設定 =================
-  function viewSettings() {
-    var st = JSON.parse(JSON.stringify(S.settings));
-    function rangeRow(label, key, min, max, desc) {
-      var val = h('b', null, st[key] + '%');
-      return h('div', { style: { marginBottom: '12px' } }, h('div', { class: 'row' }, h('span', { style: { minWidth: '150px', fontWeight: '700' } }, label),
-        h('input', { type: 'range', min: min, max: max, step: 1, value: st[key], oninput: function (e) { st[key] = Number(e.target.value); val.textContent = st[key] + '%'; } }), val),
-        h('div', { class: 'muted small' }, desc));
+  // ================= 学校の設定（設定担当） =================
+  function viewSetup() {
+    var st = S.setup;
+    var wrap = h('div', { class: 'stack' });
+    wrap.appendChild(h('div', { class: 'row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる'),
+      h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, '学校の設定'), h('span', { class: 'muted' }, st.schoolName)));
+    wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sora' }, '① 名簿')),
+      h('p', null, '児童 ', h('b', null, st.students), '人・クラス ', h('b', null, st.classes.length), '・教職員 ', h('b', null, st.staff.length), '人'),
+      h('p', { class: 'muted small' }, '名簿は、ふりかえりシートと同じ「名簿マスター」から取り込みます。取り込み用の名簿シートは、設定担当の先生だけに共有されています。'),
+      h('a', { href: st.rosterSheetUrl, target: '_blank', rel: 'noopener' }, '取り込み用の名簿シートをひらく')));
+
+    var staffOpts = [['', '（なし）']].concat(st.staff.map(function (x) { return [x.email, x.name + (x.title ? '（' + x.title + '）' : '')]; }));
+    var assign = st.classes.map(function (c) { return { classKey: c.classKey, homeroom: c.homeroom, assistants: c.assistants.slice() }; });
+    wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sakura' }, '② 担任・担当の割り当て'), h('span', { class: 'sub' }, '割り当てた先生が、そのクラスの成績を入れられます')),
+      h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, 'クラス'), h('th', null, '人数'), h('th', null, '担任'), h('th', null, 'ほかに入れる先生（専科・副担任など）'))),
+        h('tbody', null, assign.map(function (a, i) {
+          var chips = h('span', { class: 'pick' });
+          function drawChips() {
+            clear(chips);
+            a.assistants.forEach(function (e, j) {
+              var nm = (st.staff.filter(function (x) { return x.email === e; })[0] || {}).name || e;
+              chips.appendChild(h('button', { class: 'pill', title: 'はずす', onclick: function () { a.assistants.splice(j, 1); drawChips(); } }, nm + ' ✕'));
+            });
+            chips.appendChild(h('select', { class: 'text', onchange: function (e) { if (e.target.value && a.assistants.indexOf(e.target.value) === -1) a.assistants.push(e.target.value); drawChips(); } },
+              staffOpts.map(function (o) { return h('option', { value: o[0] }, o[0] ? o[1] : '＋ 足す'); })));
+          }
+          drawChips();
+          return h('tr', null, h('td', null, h('b', null, st.classes[i].label)), h('td', { class: 'muted' }, st.classes[i].count),
+            h('td', null, h('select', { class: 'text', onchange: function (e) { a.homeroom = e.target.value; } },
+              staffOpts.map(function (o) { return h('option', { value: o[0], selected: o[0] === a.homeroom }, o[1]); }))),
+            h('td', null, chips));
+        }))),
+      h('div', { class: 'row', style: { marginTop: '12px' } }, h('span', { class: 'spacer' }),
+        h('button', { class: 'btn wakaba', onclick: function () { call('saveAssignments', assign).then(function () { toast('割り当てを保存しました'); }).catch(fail); } }, '💾 割り当てを保存'))));
+
+    var grades = st.grades;
+    var gsel = grades.filter(function (g) { return g.grade === S.setupGrade; })[0] || grades[0];
+    if (gsel) {
+      var subjects = JSON.parse(JSON.stringify(gsel.subjects));
+      var form = h('div', { class: 'grid2' }, subjects.map(function (sub) {
+        var kt = sub.kanten;
+        return h('div', { class: 'card' },
+          h('h3', { style: { margin: '0 0 6px' } }, sub.name),
+          h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, '観点'), h('th', null, 'GG'), h('th', null, 'A %以上'), h('th', null, 'B %以上'))),
+            h('tbody', null, kt.map(function (k) {
+              return h('tr', null, h('td', { class: kClass(k.label, k.gg) }, k.label + (k.into ? '（→' + short(k.into) + '）' : '') + (!k.test ? '（先生が入れる）' : '')),
+                h('td', null, k.gg || '—'),
+                h('td', null, k.test ? h('input', { class: 'text num', value: k.a, oninput: function (e) { k.a = e.target.value; } }) : ''),
+                h('td', null, k.test ? h('input', { class: 'text num', value: k.b, oninput: function (e) { k.b = e.target.value; } }) : ''));
+            }))),
+          h('div', { class: 'row small', style: { marginTop: '8px' } },
+            h('span', null, '単元の評価 A ', h('input', { class: 'text num', value: sub.total.a, oninput: function (e) { sub.total.a = e.target.value; } }), '% B ',
+              h('input', { class: 'text num', value: sub.total.b, oninput: function (e) { sub.total.b = e.target.value; } }), '%')),
+          h('div', { class: 'row small', style: { marginTop: '6px' } },
+            h('span', null, '評定 3: ', h('input', { class: 'text num', value: sub.total.r3, oninput: function (e) { sub.total.r3 = Number(e.target.value); } }), '以上・2: ',
+              h('input', { class: 'text num', value: sub.total.r2, oninput: function (e) { sub.total.r2 = Number(e.target.value); } }), '以上')),
+          h('div', { class: 'row small', style: { marginTop: '6px' } },
+            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sub.hyoteiTerm, onchange: function (e) { sub.hyoteiTerm = e.target.checked; } }), '通知表に評定を出す'),
+            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sub.hyoteiYear, onchange: function (e) { sub.hyoteiYear = e.target.checked; } }), '要録に評定を出す')));
+      }));
+      wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash wakaba' }, '③ 教科・観点・評価の基準'), h('span', { class: 'sub' }, '学年ごと。SMILEの「観点名・評価基準設定」と同じ考え方です')),
+        h('div', { class: 'pick', style: { marginBottom: '12px' } }, h('span', { class: 'q' }, '学年'), grades.map(function (g) {
+          return h('button', { class: 'pill' + (g.grade === gsel.grade ? ' on' : ''), onclick: function () { S.setupGrade = g.grade; render(); } }, g.grade + '年');
+        })),
+        form,
+        h('div', { class: 'row', style: { marginTop: '12px' } }, h('span', { class: 'spacer' }),
+          h('button', { class: 'btn wakaba', onclick: function () {
+            call('saveGradeSubjects', gsel.grade, subjects).then(function (r) { gsel.subjects = r.subjects; toast(gsel.grade + '年の設定を保存しました'); }).catch(fail);
+          } }, '💾 ' + gsel.grade + '年の設定を保存'))));
     }
-    var lenSel = h('select', { class: 'text', style: { width: 'auto' }, onchange: function (e) { st.shokenLength = e.target.value; } },
-      [['short', '短め（100字くらい）'], ['normal', 'ふつう（200字くらい）'], ['long', '長め（300字くらい）']].map(function (o) { return h('option', { value: o[0], selected: st.shokenLength === o[0] }, o[1]); }));
-    return h('div', null,
-      h('div', { class: 'card' }, h('h2', null, '📗 読みこむファイル'),
-        h('p', null, S.model.fileName),
-        h('div', { class: 'row' },
-          h('button', { class: 'btn ghost', onclick: function () {
-            call('forgetFile').then(function () { S.model = null; S.files = null; S.fileMsg = ''; go('setup'); }).catch(fail);
-          } }, '別のファイルをえらぶ'),
-          isDemo() ? null : h('button', { class: 'btn ghost', onclick: loadMine }, '🔄 読みこみなおす'),
-          isDemo() ? null : h('button', { class: 'btn ghost', onclick: loadDemo }, '🧸 見本を見る'))),
-      h('div', { class: 'card' }, h('h2', null, '🎯 「とくい」「のびしろ」の決め方'),
-        rangeRow('★ とくい', 'strongRate', 60, 100, 'この%以上で、学級平均より少し高い観点を「とくい」にします。'),
-        rangeRow('🌱 のびしろ', 'weakRate', 30, 90, 'この%より低いか、学級平均よりかなり低い観点を「のびしろ」にします。')),
-      h('div', { class: 'card' }, h('h2', null, '✏️ 所見・個票'),
-        h('div', { class: 'row', style: { marginBottom: '10px' } }, h('span', { style: { minWidth: '150px', fontWeight: '700' } }, '所見の長さ'), lenSel),
-        h('div', { style: { marginBottom: '6px' } }, h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.includeChallenge, onchange: function (e) { st.includeChallenge = e.target.checked; } }), '所見に課題を1つ入れる（前向きな言い方で）')),
-        h('div', null, h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: st.showClassAvg, onchange: function (e) { st.showClassAvg = e.target.checked; } }), '個票に学級平均の線を出す'))),
-      h('button', { class: 'btn big mint', onclick: function () {
-        call('saveSettings', st).then(function (r) { S.settings = r; S.kohyo.avg = r.showClassAvg; toast('設定を保存しました'); render(); }).catch(fail);
-      } }, '💾 設定を保存'),
-      h('div', { style: { height: '14px' } }),
-      safetyCard(),
-      h('p', { class: 'muted small' }, 'せいせきノート ' + (S.boot ? 'ver.' + S.boot.version : '')));
+    return wrap;
+  }
+
+  // ================= アプリ管理者 =================
+  function viewAdmin() {
+    var a = S.admin;
+    var f = { schoolId: '', schoolName: '', termSystem: '3学期制', email: '', teacherName: '' };
+    function inp(key, ph, w) { return h('input', { class: 'text', placeholder: ph, style: { width: w || '180px' }, oninput: function (e) { f[key] = e.target.value; } }); }
+    return h('div', { class: 'stack' },
+      h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash' }, '登録している学校'), h('span', { class: 'sub' }, a.fiscalYear + '年度')),
+        a.schools.length ? h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, '学校'), h('th', null, '学期制'), h('th', null, '児童'), h('th', null, '設定担当'), h('th', null, '今年度データ'), h('th', null, ''))),
+          h('tbody', null, a.schools.map(function (x) {
+            return h('tr', null, h('td', null, h('b', null, x.schoolName), h('div', { class: 'muted small' }, x.schoolId)), h('td', null, x.termSystem), h('td', null, x.students),
+              h('td', { class: 'small' }, x.setupTeachers.join(', ')), h('td', null, x.hasDataFile ? '✅' : '—'),
+              h('td', null, h('button', { class: 'btn plain', onclick: function () {
+                call('updateSchool', { schoolId: x.schoolId, active: !x.active }).then(function (r) { S.admin = r; render(); }).catch(fail);
+              } }, x.active ? '休止にする' : '利用中にする')));
+          }))) : h('p', { class: 'muted' }, 'まだ学校がありません。')),
+      h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sora' }, '学校を登録する')),
+        h('div', { class: 'row' }, inp('schoolId', '学校コード（例: daianji-nishi）', '240px'), inp('schoolName', '学校名'),
+          h('select', { class: 'text', onchange: function (e) { f.termSystem = e.target.value; } }, ['3学期制', '2学期制'].map(function (t) { return h('option', { value: t }, t); }))),
+        h('div', { class: 'row', style: { marginTop: '8px' } }, inp('email', '設定担当の先生のメール', '260px'), inp('teacherName', '先生の名前'),
+          h('button', { class: 'btn wakaba', onclick: function () { call('registerSchool', f).then(function (r) { S.admin = r; toast('登録しました'); render(); }).catch(fail); } }, '登録する'))));
   }
 
   start();

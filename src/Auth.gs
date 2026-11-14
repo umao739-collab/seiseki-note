@@ -1,52 +1,56 @@
 /**
- * Auth.gs — 本人の確認。
+ * Auth.gs — 本人の確認と、できることの確認。（ふりかえりシート他校版の Auth.gs と同じ考え方）
  *
- * ★本人は getMe_ だけで決める。Session.getActiveUser() だけを見て、画面から来たメールは見ない。
- * ★公開関数は先頭で getMe_ を呼ぶ。学校のアカウントでなければ、何も読まずに断る（拒否が既定）。
- * ★どのファイルを読むかは、本人の UserProperties に入っている ID だけで決める（画面から ID を受け取らない）。
- *   ファイルを開けるかどうかは Google ドライブの共有のとおり（開いた先生の権限で動くため）。
+ * ★本人は getMe_ だけで決める。本番は Session.getActiveUser() だけを見て、画面から来た actingAs を見ない。
+ *   デモは actingAs が名簿・教職員に実在するペルソナの時だけ通す。
+ * ★公開関数は先頭で getContext_ を呼ぶ。名簿・教職員にいない人・学校が休止中の人は断る（拒否が既定）。
+ * ★クラスは「その先生の担当のクラス」だけ。画面から来た classKey は、担当の一覧と照らし合わせてから使う。
  */
-var DENY_MESSAGE_ = '利用できません。学校のGoogleアカウントで開いてください。';
+var DENY_MESSAGE_ = '利用できません。教職員の名簿に登録がないか、利用できる状態ではありません。';
 
-function getMe_() {
-  var email = normEmail_(Session.getActiveUser().getEmail());
-  if (!email) throw appError_('ログイン情報を取得できませんでした。学校のGoogleアカウントで開いてください。');
-  if (!isAllowedEmail_(email, ALLOWED_DOMAINS)) throw appError_(DENY_MESSAGE_);
-  return email;
-}
-
-/** メールのドメインが一覧にあるか（完全一致）。一覧が空なら誰も通さない。 */
-function isAllowedEmail_(email, domains) {
-  var e = normEmail_(email);
-  var at = e.lastIndexOf('@');
-  if (at <= 0 || at === e.length - 1) return false;
-  var d = e.slice(at + 1);
-  return (domains || []).some(function (x) { return normEmail_(x) === d; });
-}
-
-/** 本人がえらんだSMILEファイルを開く。えらんでいない・開けない・SMILEでない時は断る。 */
-function openMyFile_() {
-  var id = PropertiesService.getUserProperties().getProperty(USER_PROP.fileId);
-  if (!id) throw appError_('まだSMILEファイルがえらばれていません。');
-  return openSmile_(id);
-}
-
-/** ID のファイルを開き、SMILEファイルであることを確かめる。 */
-function openSmile_(id) {
-  if (!isFileId_(id)) throw appError_('ファイルが見つかりませんでした。');
-  var ss;
-  try {
-    ss = SpreadsheetApp.openById(id);
-  } catch (e) {
-    throw appError_('このファイルは開けませんでした。共有されているか確かめてください。');
+function getMe_(actingAs) {
+  if (!isDemoMode_()) {
+    var email = normEmail_(Session.getActiveUser().getEmail());
+    if (!email) throw appError_('ログイン情報を取得できませんでした。学校のGoogleアカウントで開いてください。');
+    return email;
   }
-  if (!isSmileFile_(ss)) throw appError_('SMILEスプレッドシートではないようです。別のファイルをえらんでください。');
-  return ss;
+  var e = normEmail_(actingAs);
+  if (!e) throw appError_('デモ: 体験する人を選んでください。');
+  return e;
 }
 
-function isSmileFile_(ss) {
-  var menu = ss.getSheetByName(MENU_SHEET);
-  if (!menu) return false;
-  var mark = String(menu.getRange(1, 2).getDisplayValue() || '');
-  return mark.indexOf(SMILE_MARK) !== -1;
+function getContext_(actingAs) {
+  var me = getMe_(actingAs);
+  if (isAppAdmin_(me)) return { me: me, actor: { role: 'admin', email: me, name: 'アプリ管理者', schoolId: '', classes: [] } };
+  var actor = Directory.resolveActor(me);
+  if (!actor) throw appError_(DENY_MESSAGE_);
+  return { me: me, actor: actor };
+}
+
+function requireTeacher_(ctx) {
+  if (ctx.actor.role !== 'teacher') throw appError_('この操作はできません。');
+}
+function requireSetup_(ctx) {
+  requireTeacher_(ctx);
+  if (!ctx.actor.isSetup) throw appError_('この操作は、学校の設定担当の先生だけができます。');
+}
+function requireAdmin_(ctx) {
+  if (ctx.actor.role !== 'admin') throw appError_('この操作は、アプリ管理者だけができます。');
+}
+/** そのクラスの担当か。担当でなければ断る。正しいクラスの書き方を返す。 */
+function requireClass_(ctx, classKey) {
+  requireTeacher_(ctx);
+  var c = normClassKey_(classKey);
+  if (!c || ctx.actor.classes.indexOf(c) === -1) throw appError_('このクラスは担当していません。');
+  return c;
+}
+
+/**
+ * エディタから実行する管理関数の先頭で必ず呼ぶ。
+ * Webアプリ経由では active=利用者 / effective=デプロイした人 になるので弾ける。
+ */
+function requireOwner_() {
+  var active = normEmail_(Session.getActiveUser().getEmail());
+  var effective = normEmail_(Session.getEffectiveUser().getEmail());
+  if (!active || active !== effective) throw new Error('この関数は、アプリ管理者がスクリプトエディタから実行してください。');
 }

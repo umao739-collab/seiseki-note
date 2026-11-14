@@ -1,0 +1,337 @@
+<script>
+/*
+ * Grid.html — スプレッドシートのように使える表（点数・評価の入力、GGに貼る表）。
+ *
+ *  - クリック・ドラッグ・Shift+矢印で範囲をえらぶ。行の見出し・列の見出しをクリックで行・列ごと
+ *  - 数字や文字を打つと、そのマスに入る。Enter で下へ、Tab で右へ。Delete で消す。Esc でやめる
+ *  - Ctrl+C（⌘C）でえらんだ範囲をコピー、Ctrl+V（⌘V）で Excel・スプレッドシート・GG からまとめて貼りつけ
+ *    1つの値を範囲に貼ると、範囲ぜんぶに入る
+ *  - Ctrl+Z（⌘Z）で1つ前にもどす
+ *
+ * ★マスの文字は textContent でだけ出す。
+ * ★値の検査は呼び出し側の normalize に任せる。入れられない値は入れずに知らせる。
+ */
+(function (root) {
+  'use strict';
+  var SL = root.SL;
+
+  function el(tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined && text !== null) e.textContent = String(text);
+    return e;
+  }
+
+  /**
+   * opts = {
+   *   columns: [{ label, group, groupClass, cls, width, editable }],
+   *   rows: [{ no, name }],
+   *   get(r, c) → 生の値（コピーにも使う）
+   *   view(r, c) → { text, cls, title }（なければ get の値をそのまま出す）
+   *   normalize(r, c, input) → 入れる値、または null（入れられない）
+   *   onChange([{ r, c, value, old }]) → 値が変わったとき
+   *   onSelect(r, c)（あってもなくても）
+   *   notify(message)
+   * }
+   */
+  function create(opts) {
+    var cols = opts.columns, rows = opts.rows;
+    var nR = rows.length, nC = cols.length;
+    var wrap = el('div', 'gridwrap');
+    var table = el('table', 'grid');
+    var sink = el('input', 'grid-sink');
+    sink.setAttribute('aria-label', 'マスの入力');
+    sink.setAttribute('autocomplete', 'off');
+    var tds = [];
+    var sel = { r0: 0, c0: 0, r1: 0, c1: 0 };   // r0,c0 が起点（アクティブなマス）
+    var editing = false, editKeepCaret = false;
+    var history = [];
+    var dragging = false;
+
+    // ---------- 見出し ----------
+    var thead = el('thead');
+    var hasGroup = cols.some(function (c) { return c.group; });
+    if (hasGroup) {
+      var gtr = el('tr', 'grow');
+      gtr.appendChild(el('th', 'corner', ''));
+      gtr.appendChild(el('th', 'corner', ''));
+      var i = 0;
+      while (i < nC) {
+        var j = i;
+        while (j + 1 < nC && cols[j + 1].group === cols[i].group) j++;
+        var th = el('th', 'ghead ' + (cols[i].groupClass || ''), cols[i].group || '');
+        th.colSpan = j - i + 1;
+        th.title = cols[i].group || '';
+        gtr.appendChild(th);
+        i = j + 1;
+      }
+      thead.appendChild(gtr);
+    }
+    var htr = el('tr', 'hrow');
+    htr.appendChild(el('th', 'corner no', '番'));
+    htr.appendChild(el('th', 'corner nm', '名前'));
+    cols.forEach(function (c, ci) {
+      var th = el('th', 'chead ' + (c.cls || ''), c.label);
+      if (c.title) th.title = c.title;
+      if (c.width) th.style.minWidth = c.width + 'px';
+      th.addEventListener('mousedown', function (e) { e.preventDefault(); select(0, ci, nR - 1, ci); focusSink(); });
+      htr.appendChild(th);
+    });
+    thead.appendChild(htr);
+    table.appendChild(thead);
+
+    // ---------- 本体 ----------
+    var tbody = el('tbody');
+    rows.forEach(function (row, ri) {
+      var tr = el('tr');
+      var thNo = el('th', 'rh no', row.no);
+      var thNm = el('th', 'rh nm', row.name);
+      [thNo, thNm].forEach(function (h) {
+        h.addEventListener('mousedown', function (e) { e.preventDefault(); select(ri, 0, ri, nC - 1); focusSink(); });
+      });
+      tr.appendChild(thNo); tr.appendChild(thNm);
+      var line = [];
+      cols.forEach(function (c, ci) {
+        var td = el('td', 'cell');
+        td.addEventListener('mousedown', function (e) {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          if (editing) commit();
+          if (e.shiftKey) extend(ri, ci); else select(ri, ci, ri, ci);
+          dragging = true;
+          focusSink();
+        });
+        td.addEventListener('mouseenter', function () { if (dragging) extend(ri, ci); });
+        td.addEventListener('dblclick', function () { startEdit(null, true); });
+        tr.appendChild(td);
+        line.push(td);
+      });
+      tds.push(line);
+      tbody.appendChild(tr);
+    });
+    table.appendChild(tbody);
+    document.addEventListener('mouseup', function () { dragging = false; });
+    wrap.appendChild(table);
+    wrap.appendChild(sink);
+
+    // ---------- 表示 ----------
+    function paintCell(r, c) {
+      var td = tds[r][c];
+      var v = opts.view ? opts.view(r, c) : null;
+      var text = v ? v.text : opts.get(r, c);
+      td.textContent = text === null || text === undefined ? '' : String(text);
+      var cls = 'cell' + (cols[c].editable && cols[c].editable(r) ? ' ed' : ' ro') + (cols[c].cls ? ' ' + cols[c].cls : '') + (v && v.cls ? ' ' + v.cls : '');
+      if (inSel(r, c)) cls += ' sel';
+      if (r === sel.r0 && c === sel.c0) cls += ' act';
+      td.className = cls;
+      if (v && v.title) td.title = v.title; else td.removeAttribute('title');
+    }
+    function paintAll() { for (var r = 0; r < nR; r++) for (var c = 0; c < nC; c++) paintCell(r, c); }
+    function inSel(r, c) {
+      return r >= Math.min(sel.r0, sel.r1) && r <= Math.max(sel.r0, sel.r1) && c >= Math.min(sel.c0, sel.c1) && c <= Math.max(sel.c0, sel.c1);
+    }
+    function range() {
+      return { r0: Math.min(sel.r0, sel.r1), r1: Math.max(sel.r0, sel.r1), c0: Math.min(sel.c0, sel.c1), c1: Math.max(sel.c0, sel.c1) };
+    }
+    function select(r0, c0, r1, c1) {
+      if (!nR || !nC) return;
+      var old = range();
+      sel = { r0: clamp(r0, nR), c0: clamp(c0, nC), r1: clamp(r1, nR), c1: clamp(c1, nC) };
+      repaintRange(old); repaintRange(range());
+      placeSink();
+      scrollTo(sel.r1, sel.c1);
+      if (opts.onSelect) opts.onSelect(sel.r0, sel.c0);
+    }
+    function extend(r, c) {
+      var old = range();
+      sel.r1 = clamp(r, nR); sel.c1 = clamp(c, nC);
+      repaintRange(old); repaintRange(range());
+      scrollTo(sel.r1, sel.c1);
+    }
+    function repaintRange(g) { for (var r = g.r0; r <= g.r1; r++) for (var c = g.c0; c <= g.c1; c++) paintCell(r, c); }
+    function clamp(v, n) { return Math.max(0, Math.min(n - 1, v)); }
+    function scrollTo(r, c) {
+      var td = tds[r] && tds[r][c];
+      if (!td) return;
+      var w = wrap.getBoundingClientRect(), t = td.getBoundingClientRect();
+      var stickyLeft = 150, stickyTop = hasGroup ? 64 : 36;
+      if (t.left < w.left + stickyLeft) wrap.scrollLeft -= (w.left + stickyLeft - t.left);
+      else if (t.right > w.right) wrap.scrollLeft += (t.right - w.right) + 4;
+      if (t.top < w.top + stickyTop) wrap.scrollTop -= (w.top + stickyTop - t.top);
+      else if (t.bottom > w.bottom) wrap.scrollTop += (t.bottom - w.bottom) + 4;
+    }
+    function placeSink() {
+      var td = tds[sel.r0] && tds[sel.r0][sel.c0];
+      if (!td) return;
+      sink.style.left = td.offsetLeft + 'px';
+      sink.style.top = td.offsetTop + 'px';
+      sink.style.width = td.offsetWidth + 'px';
+      sink.style.height = td.offsetHeight + 'px';
+    }
+    function focusSink() { try { sink.focus({ preventScroll: true }); } catch (e) { sink.focus(); } }
+
+    // ---------- 入力 ----------
+    function canEdit(r, c) { return !!(cols[c].editable && cols[c].editable(r)); }
+    function startEdit(initial, keepCaret) {
+      if (!canEdit(sel.r0, sel.c0)) { if (opts.notify) opts.notify('このマスは計算で出すので、ここでは変えられません。'); return; }
+      editing = true; editKeepCaret = !!keepCaret;
+      wrap.classList.add('editing');
+      sink.value = initial === null ? String(opts.get(sel.r0, sel.c0) || '') : initial;
+      placeSink();
+      focusSink();
+      if (initial === null) sink.select();
+    }
+    function stopEdit() {
+      editing = false;
+      wrap.classList.remove('editing');
+      sink.value = '';
+    }
+    function commit() {
+      if (!editing) return;
+      var v = sink.value;
+      stopEdit();
+      apply([{ r: sel.r0, c: sel.c0, input: v }]);
+    }
+    /** 入れたい値の一覧を検査して入れる。入れられないものは数えて知らせる。 */
+    function apply(list, noHistory) {
+      var changes = [], bad = 0;
+      list.forEach(function (x) {
+        if (!canEdit(x.r, x.c)) return;
+        var v = opts.normalize(x.r, x.c, x.input);
+        if (v === null) { bad++; return; }
+        var old = opts.get(x.r, x.c);
+        if (String(old === null || old === undefined ? '' : old) === String(v)) return;
+        changes.push({ r: x.r, c: x.c, value: v, old: old });
+      });
+      if (changes.length) {
+        if (!noHistory) { history.push(changes); if (history.length > 50) history.shift(); }
+        opts.onChange(changes);
+        changes.forEach(function (ch) { paintCell(ch.r, ch.c); });
+        if (opts.afterChange) opts.afterChange(changes);
+      }
+      if (bad && opts.notify) opts.notify(bad + 'マスは入れられませんでした（形や範囲を確かめてください）。');
+      return changes;
+    }
+    function undo() {
+      var last = history.pop();
+      if (!last) return;
+      var changes = last.map(function (ch) { return { r: ch.r, c: ch.c, value: ch.old === null || ch.old === undefined ? '' : ch.old, old: ch.value }; });
+      opts.onChange(changes);
+      changes.forEach(function (ch) { paintCell(ch.r, ch.c); });
+      if (opts.afterChange) opts.afterChange(changes);
+      if (opts.notify) opts.notify('1つ前にもどしました');
+    }
+    function clearSel() {
+      var g = range(), list = [];
+      for (var r = g.r0; r <= g.r1; r++) for (var c = g.c0; c <= g.c1; c++) list.push({ r: r, c: c, input: '' });
+      apply(list);
+    }
+    function move(dr, dc) {
+      if (editing) commit();
+      select(sel.r0 + dr, sel.c0 + dc, sel.r0 + dr, sel.c0 + dc);
+    }
+
+    sink.addEventListener('keydown', function (e) {
+      var mod = e.ctrlKey || e.metaKey;
+      if (e.isComposing || e.keyCode === 229) return;
+      if (editing) {
+        if (e.key === 'Enter') { e.preventDefault(); commit(); move(e.shiftKey ? -1 : 1, 0); }
+        else if (e.key === 'Tab') { e.preventDefault(); commit(); move(0, e.shiftKey ? -1 : 1); }
+        else if (e.key === 'Escape') { e.preventDefault(); stopEdit(); paintCell(sel.r0, sel.c0); }
+        else if (!editKeepCaret && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+          e.preventDefault(); commit();
+          move(e.key === 'ArrowUp' ? -1 : e.key === 'ArrowDown' ? 1 : 0, e.key === 'ArrowLeft' ? -1 : e.key === 'ArrowRight' ? 1 : 0);
+        }
+        return;
+      }
+      if (mod && (e.key === 'z' || e.key === 'Z')) { e.preventDefault(); undo(); return; }
+      if (mod && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); select(0, 0, nR - 1, nC - 1); return; }
+      if (mod) return; // コピー・貼りつけは copy / paste のイベントで受ける
+      var arrows = { ArrowUp: [-1, 0], ArrowDown: [1, 0], ArrowLeft: [0, -1], ArrowRight: [0, 1] };
+      if (arrows[e.key]) {
+        e.preventDefault();
+        if (e.shiftKey) extend(sel.r1 + arrows[e.key][0], sel.c1 + arrows[e.key][1]);
+        else move(arrows[e.key][0], arrows[e.key][1]);
+      } else if (e.key === 'Enter') { e.preventDefault(); move(e.shiftKey ? -1 : 1, 0); }
+      else if (e.key === 'Tab') { e.preventDefault(); move(0, e.shiftKey ? -1 : 1); }
+      else if (e.key === 'Delete' || e.key === 'Backspace') { e.preventDefault(); clearSel(); }
+      else if (e.key === 'F2') { e.preventDefault(); startEdit(null, true); }
+    });
+    // 文字を打ちはじめたら（日本語入力もふくめて）、そのマスの入力にする
+    sink.addEventListener('compositionstart', function () { if (!editing) startEdit('', false); });
+    sink.addEventListener('input', function () {
+      if (editing) return;
+      var v = sink.value;
+      startEdit(v, false);
+      sink.value = v;
+    });
+    sink.addEventListener('blur', function () { if (editing) commit(); });
+    sink.addEventListener('copy', function (e) {
+      if (editing) return;
+      e.preventDefault();
+      e.clipboardData.setData('text/plain', selectionTsv());
+      if (opts.notify) opts.notify('コピーしました');
+    });
+    sink.addEventListener('cut', function (e) { e.preventDefault(); });
+    sink.addEventListener('paste', function (e) {
+      if (editing) return;
+      e.preventDefault();
+      paste(e.clipboardData.getData('text/plain'));
+    });
+
+    function selectionTsv() {
+      var g = range(), out = [];
+      for (var r = g.r0; r <= g.r1; r++) {
+        var line = [];
+        for (var c = g.c0; c <= g.c1; c++) {
+          var v = opts.view ? opts.view(r, c) : null;
+          var raw = v && v.copy !== undefined ? v.copy : (v ? v.text : opts.get(r, c));
+          line.push(raw);
+        }
+        out.push(line);
+      }
+      return SL.toTsv(out);
+    }
+    function paste(text) {
+      var data = SL.fromTsv(text);
+      if (!data.length) return;
+      var g = range(), list = [];
+      if (data.length === 1 && data[0].length === 1 && (g.r0 !== g.r1 || g.c0 !== g.c1)) {
+        for (var r = g.r0; r <= g.r1; r++) for (var c = g.c0; c <= g.c1; c++) list.push({ r: r, c: c, input: data[0][0] });
+      } else {
+        data.forEach(function (line, i) {
+          line.forEach(function (v, j) {
+            var r = g.r0 + i, c = g.c0 + j;
+            if (r < nR && c < nC) list.push({ r: r, c: c, input: v });
+          });
+        });
+        var h = Math.min(data.length, nR - g.r0), w = Math.min(Math.max.apply(null, data.map(function (l) { return l.length; })), nC - g.c0);
+        select(g.r0, g.c0, g.r0 + h - 1, g.c0 + w - 1);
+      }
+      var ch = apply(list);
+      if (ch.length && opts.notify) opts.notify(ch.length + 'マスに貼りつけました');
+    }
+
+    paintAll();
+    setTimeout(placeSink, 0);
+    return {
+      el: wrap,
+      refresh: paintAll,
+      focus: function () { focusSink(); },
+      selectionTsv: selectionTsv,
+      selectAll: function () { select(0, 0, nR - 1, nC - 1); },
+      copyAll: function () {
+        var out = [];
+        for (var r = 0; r < nR; r++) {
+          var line = [];
+          for (var c = 0; c < nC; c++) { var v = opts.view ? opts.view(r, c) : null; line.push(v && v.copy !== undefined ? v.copy : (v ? v.text : opts.get(r, c))); }
+          out.push(line);
+        }
+        return SL.toTsv(out);
+      }
+    };
+  }
+
+  root.Grid = { create: create };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
