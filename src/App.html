@@ -77,39 +77,59 @@
         [[700, 132, '#F6C9C6'], [720, 136, '#F9D8AE'], [742, 131, '#DDD0EE'], [1120, 128, '#F6C9C6'], [1140, 134, '#F9D8AE'], [300, 136, '#DDD0EE'], [322, 132, '#F6C9C6']]
           .map(function (f) { return s('circle', { cx: f[0], cy: f[1], r: 4, fill: f[2] }); })));
   }
-  /** うさぎ先生（めがねのうさぎ）。 */
+  /** 線を少しだけゆらす（手がきの感じ）。顔がくずれないように弱め。 */
+  function softFilter(id) {
+    return s('filter', { id: id, x: '-10%', y: '-10%', width: '120%', height: '120%' },
+      s('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.04', numOctaves: '2', seed: '3', result: 't' }),
+      s('feDisplacementMap', { in: 'SourceGraphic', in2: 't', scale: 1.3 }));
+  }
+  function cheekGrad(id) {
+    return s('radialGradient', { id: id },
+      s('stop', { offset: '0', 'stop-color': '#F7A9A3', 'stop-opacity': '.85' }),
+      s('stop', { offset: '1', 'stop-color': '#F7A9A3', 'stop-opacity': '0' }));
+  }
+  var INK = '#6B5444';
+  /**
+   * うさぎ（このアプリの案内役）。片耳がぺたんと折れているのが目じるし。
+   * mood: 'normal'（ふつう）/ 'happy'（にっこり）/ 'wow'（おどろき）
+   */
   function rabbit(size, mood) {
-    var id = 'wc' + (++uid);
-    var mouth = mood === 'wow' ? s('ellipse', { cx: 40, cy: 58, rx: 3.5, ry: 4.5, fill: '#5A4636' })
-      : s('path', { d: 'M35 56 Q40 61 45 56', stroke: '#5A4636', 'stroke-width': 2.2, fill: 'none', 'stroke-linecap': 'round' });
-    return s('svg', { width: size, height: size, viewBox: '0 0 80 80', 'aria-hidden': 'true' },
-      s('defs', null, wcFilter(id, 3)),
-      s('g', { filter: 'url(#' + id + ')' },
-        s('ellipse', { cx: 29, cy: 18, rx: 7, ry: 17, fill: '#FFFDF7', stroke: '#5A4636', 'stroke-width': 2, transform: 'rotate(-12 29 18)' }),
-        s('ellipse', { cx: 51, cy: 18, rx: 7, ry: 17, fill: '#FFFDF7', stroke: '#5A4636', 'stroke-width': 2, transform: 'rotate(12 51 18)' }),
-        s('ellipse', { cx: 29, cy: 19, rx: 3, ry: 11, fill: '#F6C9C6', transform: 'rotate(-12 29 19)' }),
-        s('ellipse', { cx: 51, cy: 19, rx: 3, ry: 11, fill: '#F6C9C6', transform: 'rotate(12 51 19)' }),
-        s('circle', { cx: 40, cy: 50, r: 24, fill: '#FFFDF7', stroke: '#5A4636', 'stroke-width': 2 }),
-        s('circle', { cx: 25, cy: 56, r: 4.5, fill: '#F6C9C6', opacity: .9 }),
-        s('circle', { cx: 55, cy: 56, r: 4.5, fill: '#F6C9C6', opacity: .9 })),
-      s('circle', { cx: 32, cy: 47, r: 6.5, fill: 'none', stroke: '#8F75BE', 'stroke-width': 2 }),
-      s('circle', { cx: 48, cy: 47, r: 6.5, fill: 'none', stroke: '#8F75BE', 'stroke-width': 2 }),
-      s('line', { x1: 38.5, y1: 47, x2: 41.5, y2: 47, stroke: '#8F75BE', 'stroke-width': 2 }),
-      s('circle', { cx: 32, cy: 47, r: 2.2, fill: '#5A4636' }),
-      s('circle', { cx: 48, cy: 47, r: 2.2, fill: '#5A4636' }),
+    var f = 'rb' + (++uid), c = 'ck' + uid;
+    var eyes = mood === 'happy'
+      ? [s('path', { d: 'M34 62 Q39 57 44 62', stroke: '#4A3A2E', 'stroke-width': 2.4, fill: 'none', 'stroke-linecap': 'round' }),
+        s('path', { d: 'M56 62 Q61 57 66 62', stroke: '#4A3A2E', 'stroke-width': 2.4, fill: 'none', 'stroke-linecap': 'round' })]
+      : [s('ellipse', { cx: 39, cy: 62, rx: 3.6, ry: 4.4, fill: '#4A3A2E' }), s('circle', { cx: 40.3, cy: 60.3, r: 1.3, fill: '#fff' }),
+        s('ellipse', { cx: 61, cy: 62, rx: 3.6, ry: 4.4, fill: '#4A3A2E' }), s('circle', { cx: 62.3, cy: 60.3, r: 1.3, fill: '#fff' })];
+    var mouth = mood === 'wow'
+      ? s('ellipse', { cx: 50, cy: 72.5, rx: 2.4, ry: 3, fill: '#8A5A4C' })
+      : s('path', { d: 'M50 69 Q47.5 72 45.5 70 M50 69 Q52.5 72 54.5 70', stroke: INK, 'stroke-width': 1.5, fill: 'none', 'stroke-linecap': 'round' });
+    return s('svg', { width: size, height: size, viewBox: '0 0 100 100', 'aria-hidden': 'true' },
+      s('defs', null, softFilter(f), cheekGrad(c)),
+      s('g', { filter: 'url(#' + f + ')' },
+        s('path', { d: 'M40 40 C 33 26, 33 7, 40 5 C 47 4, 47 24, 46 38 Z', fill: '#FFFDF7', stroke: INK, 'stroke-width': 2 }),
+        s('path', { d: 'M41 35 C 37 24, 38 12, 41 10 C 44 10, 44 22, 44 33 Z', fill: '#F8C6C2' }),
+        s('path', { d: 'M57 36 C 60 24, 70 16, 79 20 C 86 24, 76 32, 62 40 Z', fill: '#FFFDF7', stroke: INK, 'stroke-width': 2 }),
+        s('path', { d: 'M61 35 C 64 27, 71 22, 77 23 C 79 26, 72 30, 64 36 Z', fill: '#F8C6C2' }),
+        s('ellipse', { cx: 50, cy: 63, rx: 31, ry: 26.5, fill: '#FFFDF7', stroke: INK, 'stroke-width': 2 })),
+      s('ellipse', { cx: 32, cy: 70, rx: 8, ry: 5, fill: 'url(#' + c + ')' }),
+      s('ellipse', { cx: 68, cy: 70, rx: 8, ry: 5, fill: 'url(#' + c + ')' }),
+      eyes,
+      s('ellipse', { cx: 50, cy: 67.5, rx: 2, ry: 1.4, fill: '#F09A93' }),
       mouth);
   }
-  /** ことり。 */
+  /** ことり（まんまる）。 */
   function bird(size, color) {
-    var id = 'wc' + (++uid);
+    var f = 'bd' + (++uid), c = 'ck' + uid;
     return s('svg', { width: size, height: size, viewBox: '0 0 40 40', 'aria-hidden': 'true' },
-      s('defs', null, wcFilter(id, 2)),
-      s('g', { filter: 'url(#' + id + ')' },
-        s('ellipse', { cx: 19, cy: 23, rx: 13, ry: 11, fill: color || '#C7E0F3', stroke: '#5A4636', 'stroke-width': 1.6 }),
-        s('path', { d: 'M13 24 Q19 18 24 26 Q18 28 13 24 Z', fill: '#FFFDF7', opacity: .8 }),
-        s('path', { d: 'M31 21 L37 23 L31 25 Z', fill: '#DD8F4A' })),
-      s('circle', { cx: 26, cy: 19, r: 1.8, fill: '#5A4636' }),
-      s('path', { d: 'M15 34 L14 38 M21 34 L22 38', stroke: '#5A4636', 'stroke-width': 1.4, 'stroke-linecap': 'round' }));
+      s('defs', null, softFilter(f), cheekGrad(c)),
+      s('g', { filter: 'url(#' + f + ')' },
+        s('path', { d: 'M18 9 Q20 4 23 7', stroke: INK, 'stroke-width': 1.4, fill: 'none', 'stroke-linecap': 'round' }),
+        s('ellipse', { cx: 20, cy: 22, rx: 14, ry: 13, fill: color || '#C7E0F3', stroke: INK, 'stroke-width': 1.6 }),
+        s('path', { d: 'M9 23 Q13 18 18 24 Q13 28 9 23 Z', fill: '#FFFDF7', opacity: .75 })),
+      s('ellipse', { cx: 29, cy: 25, rx: 3.2, ry: 2.2, fill: 'url(#' + c + ')' }),
+      s('ellipse', { cx: 25, cy: 20, rx: 1.7, ry: 2.1, fill: '#4A3A2E' }), s('circle', { cx: 25.6, cy: 19.3, r: .6, fill: '#fff' }),
+      s('path', { d: 'M31 20.5 L35 22 L31 23.5 Z', fill: '#F2B36B' }),
+      s('path', { d: 'M17 34.5 L16.5 37.5 M23 34.5 L23.5 37.5', stroke: INK, 'stroke-width': 1.3, 'stroke-linecap': 'round' }));
   }
 
   // ================= サーバー =================
@@ -208,7 +228,7 @@
     clear(root);
     var who = S.boot ? (S.boot.schoolName ? S.boot.schoolName + '　' : '') + S.boot.name + (S.boot.role === 'admin' ? '' : ' 先生') : '';
     root.appendChild(h('header', { class: 'cover' }, scene(),
-      h('div', { class: 'head' }, rabbit(64), h('div', null, h('h1', null, 'せいせきノート'), h('div', { class: 'sub' }, 'テストの点から、通知表・要録・GGまで'))),
+      h('div', { class: 'head' }, rabbit(72, 'happy'), h('div', null, h('h1', null, 'せいせきノート'), h('div', { class: 'sub' }, 'テストの点から、通知表・要録・GGまで'))),
       who ? h('div', { class: 'who' }, who) : null));
     if (S.isDemo) root.appendChild(h('div', { class: 'demo-bar' }, '🧸 デモ（名前も点数も作りものです）',
       S.actingAs ? h('button', { class: 'linkbtn', onclick: function () { S.actingAs = null; S.boot = null; start(); } }, '体験する人をかえる') : null));
@@ -612,7 +632,7 @@
         });
       });
     });
-    if (!miss.length && !att.length) return h('div', { class: 'empty' }, rabbit(96), h('span', { class: 'title' }, 'ぜんぶ入っています！'), h('p', { class: 'muted' }, 'テストの点も、先生が入れる評価も、空いているところはありません。'));
+    if (!miss.length && !att.length) return h('div', { class: 'empty' }, rabbit(110, 'happy'), h('span', { class: 'title' }, 'ぜんぶ入っています！'), h('p', { class: 'muted' }, 'テストの点も、先生が入れる評価も、空いているところはありません。'));
     return h('div', { class: 'stack' },
       miss.length ? h('div', null, h('h2', null, h('span', { class: 'wash' }, 'テストの点が空いている子')), h('div', { class: 'grid2' }, miss.map(function (x) {
         return h('div', { class: 'card' }, h('div', { class: 'row' }, h('b', null, x.test.subject + '・' + x.test.term), h('span', null, '「' + x.test.name + '」'), h('span', { class: 'spacer' }),
