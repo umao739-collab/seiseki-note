@@ -418,7 +418,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.9.0';
+var APP_VERSION = '2.9.3';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -1024,7 +1024,7 @@ function validateHyoteiRule_(rule, subjectConf) {
         subjects: [{ name: '国語', terms: [{ term: '1学期', tests: 5 }] }, { name: '算数', terms: [{ term: '1学期', tests: 4 }] }],
         students: { smile: 28, matched: 27, mismatch: [{ no: 12, smileName: 'すずらん さきこ', rosterName: 'すずらん さき' }], missing: [] } };
     },
-    importSmile: function (ck, url, withCrit, actingAs) { var a = actor(actingAs); cls(a, ck); return { tests: 9, scores: 243, students: 27 }; },
+    importSmile: function (ck, url, actingAs) { var a = actor(actingAs); cls(a, ck); return { tests: 9, scores: 243, students: 27 }; },
     saveTests: function (ck, subject, term, list, actingAs) {
       var a = actor(actingAs); var c = cls(a, ck);
       var sub = gradeSubjects[gradeOf_(c)].filter(function (s) { return s.name === subject; })[0];
@@ -2511,7 +2511,16 @@ function validateHyoteiRule_(rule, subjectConf) {
     var tk = SL.testKanten(sub);
     var list = SL.testsOf(cd, sub.name, S.term).map(function (t) { return { testId: t.testId, name: t.name, points: JSON.parse(JSON.stringify(t.points)) }; });
     var box = h('div', null);
-    var dirty = false;
+    var dirty = false, saveBtn = null;
+    function saveLook() {
+      if (!saveBtn) return;
+      var done = !dirty && list.length;
+      saveBtn.disabled = !!done;
+      saveBtn.className = done ? 'btn plain' : 'btn wakaba';
+      saveBtn.textContent = done ? '✅ 登録ずみ' : '💾 このテストで登録する';
+      saveBtn.title = done ? 'このテストは登録されています。名前や配点を変えると、また押せるようになります。' : '';
+    }
+    function markDirty() { dirty = true; saveLook(); }
     function scoreCount(testId) {
       var sc = cd.scores[testId] || {};
       return Object.keys(sc).filter(function (k) { return Object.keys(sc[k]).length; }).length;
@@ -2525,27 +2534,28 @@ function validateHyoteiRule_(rule, subjectConf) {
           var total = Object.keys(t.points).reduce(function (s2, l) { return s2 + (Number(t.points[l]) || 0); }, 0);
           return h('tr', null,
             h('td', { class: 'muted' }, i + 1),
-            h('td', null, h('input', { class: 'text', style: { width: '100%', minWidth: '180px' }, value: t.name, maxlength: 40, placeholder: '例: わり算', oninput: function (e) { t.name = e.target.value; dirty = true; } })),
+            h('td', null, h('input', { class: 'text', style: { width: '100%', minWidth: '180px' }, value: t.name, maxlength: 40, placeholder: '例: わり算', oninput: function (e) { t.name = e.target.value; markDirty(); } })),
             tk.map(function (k) {
               return h('td', null, h('input', { class: 'text num', inputmode: 'numeric', value: t.points[k.label] === undefined ? '' : t.points[k.label], placeholder: '—',
-                oninput: function (e) { var v = e.target.value.trim(); if (v === '') delete t.points[k.label]; else t.points[k.label] = v; dirty = true; } }));
+                oninput: function (e) { var v = e.target.value.trim(); if (v === '') delete t.points[k.label]; else t.points[k.label] = v; markDirty(); } }));
             }),
             h('td', { class: 'muted' }, total || ''),
             h('td', { style: { whiteSpace: 'nowrap' } },
-              h('button', { class: 'btn plain', title: '上へ', disabled: i === 0, onclick: function () { list.splice(i - 1, 0, list.splice(i, 1)[0]); dirty = true; draw(); } }, '▲'),
-              h('button', { class: 'btn plain', title: '下へ', disabled: i === list.length - 1, onclick: function () { list.splice(i + 1, 0, list.splice(i, 1)[0]); dirty = true; draw(); } }, '▼'),
+              h('button', { class: 'btn plain', title: '上へ', disabled: i === 0, onclick: function () { list.splice(i - 1, 0, list.splice(i, 1)[0]); markDirty(); draw(); } }, '▲'),
+              h('button', { class: 'btn plain', title: '下へ', disabled: i === list.length - 1, onclick: function () { list.splice(i + 1, 0, list.splice(i, 1)[0]); markDirty(); draw(); } }, '▼'),
               h('button', { class: 'btn plain', title: '消す', onclick: function () {
                 var n = t.testId ? scoreCount(t.testId) : 0;
                 (n ? ask('「' + (t.name || 'このテスト') + '」を消しますか？', h('p', null, 'もう ' + n + '人ぶんの点数が入っています。保存すると、その点数も消えます。'), [['やめる', false, 'plain'], ['消す', true, 'sakura']]) : Promise.resolve(true))
-                  .then(function (ok) { if (ok) { list.splice(i, 1); dirty = true; draw(); } });
+                  .then(function (ok) { if (ok) { list.splice(i, 1); markDirty(); draw(); } });
               } }, '🗑')));
         })));
       box.appendChild(list.length ? table : h('div', { class: 'empty' }, stillLife(60), h('span', { class: 'title' }, 'まだテストがありません'), h('p', { class: 'muted' }, '下の「＋ テストを足す」から登録してください。')));
       box.appendChild(h('div', { class: 'row', style: { marginTop: '12px' } },
-        h('button', { class: 'btn plain', onclick: function () { list.push({ testId: '', name: '', points: {} }); dirty = true; draw(); } }, '＋ テストを足す'),
+        h('button', { class: 'btn plain', onclick: function () { list.push({ testId: '', name: '', points: {} }); markDirty(); draw(); } }, '＋ テストを足す'),
         h('span', { class: 'spacer' }),
-        h('button', { class: 'btn wakaba', onclick: save }, '💾 このテストで登録する'),
+        saveBtn = h('button', { class: 'btn wakaba', onclick: save }, '💾 このテストで登録する'),
         cd.sameGrade.length ? h('button', { class: 'btn sora', onclick: copyDialog }, '👯 同じ学年のクラスにも反映') : null));
+      saveLook();
     }
     function save() {
       var payload = list.map(function (t) { return { testId: t.testId, name: t.name, points: t.points }; });
@@ -2574,7 +2584,18 @@ function validateHyoteiRule_(rule, subjectConf) {
         '学期ごとに、テストの名前と、観点ごとの配点を登録します。配点が空の観点は、そのテストでは使いません。',
         tk.some(function (k) { return k.into; }) ? h('div', { class: 'muted' }, '「' + tk.filter(function (k) { return k.into; }).map(function (k) { return k.label; }).join('・') + '」の点は「' + tk.filter(function (k) { return k.into; })[0].into + '」の評価に入ります。') : null)),
       smileImportCard(),
+      smileDoneNote(),
       box);
+  }
+
+  // 取りこみが終わったことを、テストの一覧の上に1回だけ知らせる
+  function smileDoneNote() {
+    var d = S.smileDone; S.smileDone = null;
+    if (!d || d.classKey !== S.cd.classKey) return null;
+    return h('div', { class: 'note small', style: { marginBottom: '14px' } },
+      h('b', null, '✅ SMILE からの取りこみが終わりました'), '（テスト ' + d.tests + '・' + d.students + '人ぶんの点数）',
+      h('div', null, 'テストも点数も、もう保存されています。下の「登録する」や「同じ学年のクラスにも反映」は押さなくて大丈夫です。'),
+      h('div', { class: 'muted' }, 'ほかの教科・学期のテストも取りこまれています。上の教科・学期を切りかえると見られます。'));
   }
 
   // ---------- SMILE から取りこむ（移しかえ） ----------
@@ -2582,7 +2603,6 @@ function validateHyoteiRule_(rule, subjectConf) {
     var cd = S.cd;
     var url = h('input', { class: 'text', type: 'url', style: { flex: '1', minWidth: '260px' }, 'aria-label': 'SMILE ファイルのリンク', placeholder: 'SMILE スプレッドシートのリンク（ブラウザの上の URL）' });
     var result = h('div');
-    var withCrit = false;
     function showPreview(r, link) {
       clear(result);
       var st = r.students;
@@ -2591,21 +2611,23 @@ function validateHyoteiRule_(rule, subjectConf) {
         h('ul', { class: 'small' }, r.subjects.map(function (x) {
           return h('li', null, h('b', null, x.name), '：' + x.terms.map(function (t) { return t.term + ' ' + t.tests + 'テスト'; }).join('・'));
         })),
-        h('p', { class: 'small' }, '子ども：SMILE ' + st.smile + '人のうち、名簿と番号・名前が合った ', h('b', null, st.matched), '人に入れます。'),
+        h('p', { class: 'small' }, '子ども：SMILE ' + st.smile + '人のうち、名簿と名前が合った ', h('b', null, st.matched), '人に入れます。'),
         st.mismatch.length ? h('div', { class: 'note warm small' }, h('b', null, '名前が合わない子（この子には入れません）'),
           h('ul', null, st.mismatch.map(function (x) { return h('li', null, x.no + '番　SMILE：' + x.smileName + '　／　名簿：' + x.rosterName); })),
           'SMILE の名簿を直してから、もう一度読みこむと入ります。') : null,
-        st.missing.length ? h('div', { class: 'note warm small' }, h('b', null, 'アプリの名簿にいない番号（入れません）'),
+        st.missing.length ? h('div', { class: 'note warm small' }, h('b', null, 'アプリの名簿にいない子（転校した子など・入れません）'),
           h('div', null, st.missing.map(function (x) { return x.no + '番 ' + x.smileName; }).join('、'))) : null,
+        (st.moved || []).length ? h('details', { class: 'small' }, h('summary', null, '番号がずれていた子（名前で合わせて入れます・' + st.moved.length + '人）'),
+          h('ul', null, st.moved.map(function (x) { return h('li', null, x.smileName + '　SMILE ' + x.no + '番 → 名簿 ' + x.rosterNo + '番'); }))) : null,
         r.skipped.length ? h('details', { class: 'small' }, h('summary', null, '取りこまないもの（' + r.skipped.length + '）'), h('ul', null, r.skipped.map(function (x) { return h('li', null, x); }))) : null,
-        r.thresholds ? h('div', { style: { margin: '8px 0' } }, h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: function (e) { withCrit = e.target.checked; } }),
-          'SMILE の A・B の基準も「評価の基準」に入れる（A になる %・C になる % として）')) : null,
+        r.thresholds ? h('p', { class: 'small' }, '評価の基準（A になる %・C になる %）も、SMILE で決めていたとおりに引き継ぎます。') : null,
         h('p', { class: 'muted small' }, '同じ教科・学期に同じ名前のテストがあるときは、配点をそろえて点数を上書きします。アプリにしかないテストと点数は消しません。'),
         h('div', { class: 'row' }, h('span', { class: 'spacer' }),
           h('button', { class: 'btn wakaba', onclick: function (e) {
             e.target.disabled = true; e.target.textContent = '取りこんでいます…';
-            call('importSmile', cd.classKey, link, withCrit).then(function (x) {
+            call('importSmile', cd.classKey, link).then(function (x) {
               toast('取りこみました（テスト ' + x.tests + '・' + x.students + '人ぶんの点数）');
+              S.smileDone = { classKey: cd.classKey, tests: x.tests, students: x.students };
               return reloadClass();
             }).catch(function (err) { e.target.disabled = false; e.target.textContent = '📥 取りこむ'; fail(err); });
           } }, '📥 取りこむ'))));
