@@ -386,5 +386,20 @@ run('G02 GG に全教科をまとめて貼る: 教科ごとに 知・思・主�
   ok(y.rows.every((r) => r.cells.length === y.header.length));
 });
 
+run('G03 GG の学年ごとの教科の並び（1年・3年・4年・6年の GG の見出しと同じ）', () => {
+  const want = {
+    1: ['国語', '算数', '生活', '音楽', '図画工作', '体育'],
+    3: ['国語', '社会', '算数', '理科', '音楽', '図画工作', '体育'],
+    4: ['国語', '社会', '算数', '理科', '音楽', '図画工作', '体育'],
+    5: ['国語', '社会', '算数', '理科', '音楽', '図画工作', '家庭', '体育', '外国語'],
+    6: ['国語', '社会', '算数', '理科', '音楽', '図画工作', '家庭', '体育', '外国語']
+  };
+  Object.keys(want).forEach((g) => {
+    const cd = cdOf();
+    cd.subjects = JSON.parse(JSON.stringify(ctx.defaultSubjectsForGrade_(Number(g))));
+    eq(SL.ggAll(cd, '1学期').subjects, want[g], g + '年');
+  });
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);
