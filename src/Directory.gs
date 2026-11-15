@@ -54,7 +54,7 @@ var Directory = (function () {
     if (!s) return null;
     return { schoolId: s.schoolId, schoolName: s.schoolName, active: isActive(s.active), termSystem: TERM_LABELS[s.termSystem] ? s.termSystem : '3学期制' };
   }
-  function _enrolled(o) { return ENROLLED_STATUS.indexOf(o.status) !== -1; }
+  function _enrolled(o) { return isActiveStatus_(o.status, ENROLLED_STATUS); }
   /** その学校の在籍の児童（クラス・番号順）。 */
   function listStudents(schoolId) {
     return (_load().roster[schoolId] || []).filter(_enrolled).map(function (o) {
@@ -75,7 +75,7 @@ var Directory = (function () {
     }).map(function (k) { return { classKey: k, count: seen[k] }; });
   }
   function listStaff(schoolId) {
-    return (_load().staff[schoolId] || []).filter(function (o) { return STAFF_ACTIVE_STATUS.indexOf(o.status) !== -1; })
+    return (_load().staff[schoolId] || []).filter(function (o) { return isActiveStatus_(o.status, STAFF_ACTIVE_STATUS); })
       .map(function (o) { return { email: normEmail_(o.email), name: o.name, title: o.title }; });
   }
   function _setupRows(email) {
@@ -112,6 +112,9 @@ var Directory = (function () {
     return r ? r.spreadsheetId : '';
   }
   function listDataFiles() { return _load().dataFiles; }
+  function getSchoolRosterRow(schoolId) {
+    return _load().schoolRosters.filter(function (x) { return x.schoolId === schoolId; })[0] || null;
+  }
   function getSchoolRosterId(schoolId) {
     var r = _load().schoolRosters.filter(function (x) { return x.schoolId === schoolId; })[0];
     return r ? r.spreadsheetId : '';
@@ -129,7 +132,7 @@ var Directory = (function () {
     clear: clear, listSchools: listSchools, getSchool: getSchool, isActive: isActive,
     listStudents: listStudents, listClassStudents: listClassStudents, listSchoolClasses: listSchoolClasses,
     listStaff: listStaff, resolveActor: resolveActor, listAssignments: listAssignments,
-    getOpenDataFileId: getOpenDataFileId, listDataFiles: listDataFiles, getSchoolRosterId: getSchoolRosterId,
+    getOpenDataFileId: getOpenDataFileId, listDataFiles: listDataFiles, getSchoolRosterId: getSchoolRosterId, getSchoolRosterRow: getSchoolRosterRow,
     listSetupTeacherEmails: listSetupTeacherEmails, isRosterEmail: isRosterEmail
   };
 })();

@@ -215,3 +215,65 @@ function normalizeAssignments_(classes, schoolClasses, staff) {
 }
 
 function newId_() { return Utilities.getUuid(); }
+
+// ================= 名簿マスター =================
+
+/** スプレッドシートの URL から ID を取り出す。取り出せなければ ''。 */
+function sheetIdFromUrl_(url) {
+  var u = String(url || '').trim();
+  if (u.length > 500) return '';
+  var m = /^https:\/\/docs\.google\.com\/spreadsheets\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{20,128})(?:[\/?#]|$)/.exec(u);
+  return m ? m[1] : '';
+}
+
+/** 「学校」の列の値が、その学校のものか。「nr-435_大安寺西小学校」のような値は学校コードで、そうでなければ学校名で見る。 */
+function schoolMatches_(cell, schoolId, schoolName) {
+  var v = String(cell || '').trim();
+  if (!v) return false;
+  var m = /^[a-z]*-?(\d{3,})_/.exec(v);
+  if (m && /^\d+$/.test(String(schoolId))) return m[1] === String(schoolId);
+  var bare = function (x) { return String(x || '').replace(/^.*_/, '').replace(/^奈良市立?/, '').trim(); };
+  return bare(v) !== '' && bare(v) === bare(schoolName);
+}
+
+/** 「状態」の値が在籍・在職か（「active,multi」のようにカンマで続くことがある）。 */
+function isActiveStatus_(v, list) {
+  return String(v || '').split(/[,、]/).some(function (x) { return list.indexOf(x.trim()) !== -1; });
+}
+
+/**
+ * 名簿マスターの「児童生徒」「教職員」シート（表示値の2次元配列、1行目が見出し）から、
+ * その学校の行の、決まった列だけを抜き出す。見出しが足りなければ断る。
+ */
+function parseRosterMaster_(stuValues, staffValues, schoolId, schoolName, at) {
+  function cols(values, want, what) {
+    var head = (values[0] || []).map(function (h) { return String(h).trim(); });
+    var idx = {};
+    Object.keys(want).forEach(function (k) {
+      var i = head.indexOf(want[k]);
+      if (i === -1) throw appError_('名簿マスターの「' + what + '」シートに「' + want[k] + '」の列が見つかりません。');
+      idx[k] = i;
+    });
+    return idx;
+  }
+  var si = cols(stuValues, MASTER_STUDENT_COLS, '児童生徒');
+  var ti = cols(staffValues, MASTER_STAFF_COLS, '教職員');
+  var roster = [], staff = [];
+  stuValues.slice(1).forEach(function (r) {
+    if (!schoolMatches_(r[si.school], schoolId, schoolName)) return;
+    var email = normEmail_(r[si.email]);
+    if (!/^[^@\s]+@[^@\s]+$/.test(email)) return;
+    var name = (String(r[si.family] || '').trim() + ' ' + String(r[si.given] || '').trim()).trim();
+    roster.push({ schoolId: String(schoolId), email: email, name: name, grade: toHalf_(r[si.grade]), classNo: toHalf_(r[si.classNo]),
+      number: toHalf_(r[si.number]), status: isActiveStatus_(r[si.status], ENROLLED_STATUS) ? 'active' : String(r[si.status] || '').trim(), importedAt: at });
+  });
+  staffValues.slice(1).forEach(function (r) {
+    if (!schoolMatches_(r[ti.school], schoolId, schoolName)) return;
+    var email = normEmail_(r[ti.email]);
+    if (!/^[^@\s]+@[^@\s]+$/.test(email)) return;
+    var name = (String(r[ti.family] || '').trim() + ' ' + String(r[ti.given] || '').trim()).trim();
+    staff.push({ schoolId: String(schoolId), email: email, name: name, title: String(r[ti.title] || '').trim(),
+      status: isActiveStatus_(r[ti.status], STAFF_ACTIVE_STATUS) ? 'active' : String(r[ti.status] || '').trim(), importedAt: at });
+  });
+  return { roster: roster, staff: staff };
+}

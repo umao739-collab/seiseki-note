@@ -208,7 +208,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.0.1';
+var APP_VERSION = '2.1.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -219,7 +219,8 @@ var SCHEMA = {
   /** 設定担当の先生（アプリ管理者が登録）。role='setup'。 */
   teachers: ['schoolId', 'email', 'name', 'active', 'role'],
   dataFiles: ['schoolId', 'fiscalYear', 'spreadsheetId', 'status'],
-  schoolRosters: ['schoolId', 'spreadsheetId', 'updatedAt'],
+  /** 学校ごとの取り込み用名簿シートと、取り込み元の名簿マスター（ID は画面に返さない）。 */
+  schoolRosters: ['schoolId', 'spreadsheetId', 'updatedAt', 'sourceId', 'importedAt'],
   /** 担任・担当（設定担当が割り当てる）。 */
   assignments: ['schoolId', 'classKey', 'email', 'role', 'updatedAt', 'updatedBy'],
   // ----- 取り込み用名簿シート（学校ごと・取り込みアプリが書く） -----
@@ -249,7 +250,7 @@ var MAX_CHANGES = 5000;
 
 /** 在籍とみなす名簿の「状態」。名簿マスターは active。 */
 var ENROLLED_STATUS = ['在籍', 'active'];
-var STAFF_ACTIVE_STATUS = ['active', '在職'];
+var STAFF_ACTIVE_STATUS = ['active', '在職'];  // 名簿マスターは「active,multi」のようにカンマで続くことがある
 /** この役職の人は、その学校の設定担当（学校の全クラスを見られる）。 */
 var SETUP_TITLES = ['校長', '教頭', '教務主任'];
 var ASSIGN_ROLE = { homeroom: 'homeroom', assistant: 'assistant' };
@@ -257,6 +258,27 @@ var MAX_ASSISTANTS = 20;
 var DATA_STATUS = { open: 'open', closed: 'closed' };
 var TEST_SCHOOL_PREFIX = 't-';
 var SCHOOL_ROSTER_MARK = 'seiseki-note-roster';
+
+/** 奈良市の学校コードと学校名（学校の登録のドロップダウン）。公開されている情報。 */
+var SCHOOL_LIST = [
+  ['401', '奈良市立椿井小学校'], ['402', '奈良市立飛鳥小学校'], ['403', '奈良市立鼓阪小学校'], ['404', '奈良市立済美小学校'], ['405', '奈良市立佐保小学校'],
+  ['406', '奈良市立大宮小学校'], ['407', '奈良市立都跡小学校'], ['408', '奈良市立大安寺小学校'], ['409', '奈良市立東市小学校'], ['410', '奈良市立平城小学校'],
+  ['411', '奈良市立辰市小学校'], ['412', '奈良市立明治小学校'], ['413', '奈良市立帯解小学校'], ['415', '奈良市立伏見小学校'], ['416', '奈良市立富雄南小学校'],
+  ['417', '奈良市立富雄北小学校'], ['418', '奈良市田原小学校'], ['420', '奈良市立柳生小学校'], ['422', '奈良市立興東小学校'], ['423', '奈良市立あやめ池小学校'],
+  ['424', '奈良市立鶴舞小学校'], ['425', '奈良市立鳥見小学校'], ['426', '奈良市立登美ヶ丘小学校'], ['427', '奈良市立六条小学校'], ['428', '奈良市立青和小学校'],
+  ['430', '奈良市立東登美ケ丘小'], ['431', '奈良市立二名小学校'], ['432', '奈良市立西大寺北小学校'], ['433', '奈良市立富雄第三小学校'], ['434', '奈良市立平城西小学校'],
+  ['435', '奈良市立大安寺西小学校'], ['436', '奈良市立三碓小学校'], ['437', '奈良市立ならやま小学校'], ['438', '奈良市立朱雀小学校'], ['439', '奈良市立済美南小学校'],
+  ['440', '奈良市立鼓阪北小学校'], ['441', '奈良市立伏見南小学校'], ['442', '奈良市立佐保台小学校'], ['443', '奈良市立佐保川小学校'], ['444', '奈良市立左京小学校'],
+  ['445', '奈良市立月ヶ瀬小学校'], ['447', '奈良市立都祁小学校'],
+  ['501', '奈良市立春日中学校'], ['502', '奈良市立三笠中学校'], ['503', '奈良市立若草中学校'], ['504', '奈良市立伏見中学校'], ['505', '奈良市立富雄中学校'],
+  ['506', '奈良市立都南中学校'], ['507', '奈良市田原中学校'], ['509', '奈良市立興東館柳生中学校'], ['510', '奈良市立登美ヶ丘中学校'], ['511', '奈良市立ならやま中学校'],
+  ['512', '奈良市立二名中学校'], ['513', '奈良市立京西中学校'], ['514', '奈良市立富雄南中学校'], ['515', '奈良市立平城中学校'], ['516', '奈良市立飛鳥中学校'],
+  ['517', '奈良市立登美ヶ丘北中学校'], ['518', '奈良市立都跡中学校'], ['519', '奈良市立平城東中学校'], ['520', '奈良市立月ヶ瀬中学校'], ['521', '奈良市立都祁中学校'],
+  ['522', '奈良市立富雄第三中学校'], ['523', '奈良市立一条高等学校附属中学校']
+];
+/** 名簿マスターの見出し（この名前の列だけを読む。住所・保護者などの列は読まない）。 */
+var MASTER_STUDENT_COLS = { status: '状態', school: '学校', family: '姓', given: '名', email: 'Googleアカウント', grade: '年', classNo: '組', number: '番' };
+var MASTER_STAFF_COLS = { status: '状態', school: '学校', family: '姓', given: '名', email: 'Googleアカウント', title: '役職' };
 
 /** 教科・観点・基準の初期値（SMILEスプレッドシートの「観点名・評価基準設定」と同じ形）。 */
 var KANTEN_KNOW = '知識・技能', KANTEN_THINK = '思考・判断・表現', KANTEN_ATTITUDE = '主体的に学習に取り組む態度';
@@ -289,7 +311,7 @@ function defaultSubjectsForGrade_(grade) {
  * tools/run-local-tests.js がグローバル関数の一覧と照らし合わせる。
  */
 var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
-  'saveShoken', 'saveGradeSubjects', 'getSchoolSetup', 'saveAssignments', 'getAdminView', 'registerSchool', 'updateSchool'];
+  'saveShoken', 'saveGradeSubjects', 'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
 var ADMIN_FUNCTIONS = ['setup', 'startFiscalYear', 'closeFiscalYear'];
 var ENTRY_FUNCTIONS = ['doGet'];
 
@@ -530,6 +552,68 @@ function normalizeAssignments_(classes, schoolClasses, staff) {
 
 function newId_() { return Utilities.getUuid(); }
 
+// ================= 名簿マスター =================
+
+/** スプレッドシートの URL から ID を取り出す。取り出せなければ ''。 */
+function sheetIdFromUrl_(url) {
+  var u = String(url || '').trim();
+  if (u.length > 500) return '';
+  var m = /^https:\/\/docs\.google\.com\/spreadsheets\/(?:u\/\d+\/)?d\/([A-Za-z0-9_-]{20,128})(?:[\/?#]|$)/.exec(u);
+  return m ? m[1] : '';
+}
+
+/** 「学校」の列の値が、その学校のものか。「nr-435_大安寺西小学校」のような値は学校コードで、そうでなければ学校名で見る。 */
+function schoolMatches_(cell, schoolId, schoolName) {
+  var v = String(cell || '').trim();
+  if (!v) return false;
+  var m = /^[a-z]*-?(\d{3,})_/.exec(v);
+  if (m && /^\d+$/.test(String(schoolId))) return m[1] === String(schoolId);
+  var bare = function (x) { return String(x || '').replace(/^.*_/, '').replace(/^奈良市立?/, '').trim(); };
+  return bare(v) !== '' && bare(v) === bare(schoolName);
+}
+
+/** 「状態」の値が在籍・在職か（「active,multi」のようにカンマで続くことがある）。 */
+function isActiveStatus_(v, list) {
+  return String(v || '').split(/[,、]/).some(function (x) { return list.indexOf(x.trim()) !== -1; });
+}
+
+/**
+ * 名簿マスターの「児童生徒」「教職員」シート（表示値の2次元配列、1行目が見出し）から、
+ * その学校の行の、決まった列だけを抜き出す。見出しが足りなければ断る。
+ */
+function parseRosterMaster_(stuValues, staffValues, schoolId, schoolName, at) {
+  function cols(values, want, what) {
+    var head = (values[0] || []).map(function (h) { return String(h).trim(); });
+    var idx = {};
+    Object.keys(want).forEach(function (k) {
+      var i = head.indexOf(want[k]);
+      if (i === -1) throw appError_('名簿マスターの「' + what + '」シートに「' + want[k] + '」の列が見つかりません。');
+      idx[k] = i;
+    });
+    return idx;
+  }
+  var si = cols(stuValues, MASTER_STUDENT_COLS, '児童生徒');
+  var ti = cols(staffValues, MASTER_STAFF_COLS, '教職員');
+  var roster = [], staff = [];
+  stuValues.slice(1).forEach(function (r) {
+    if (!schoolMatches_(r[si.school], schoolId, schoolName)) return;
+    var email = normEmail_(r[si.email]);
+    if (!/^[^@\s]+@[^@\s]+$/.test(email)) return;
+    var name = (String(r[si.family] || '').trim() + ' ' + String(r[si.given] || '').trim()).trim();
+    roster.push({ schoolId: String(schoolId), email: email, name: name, grade: toHalf_(r[si.grade]), classNo: toHalf_(r[si.classNo]),
+      number: toHalf_(r[si.number]), status: isActiveStatus_(r[si.status], ENROLLED_STATUS) ? 'active' : String(r[si.status] || '').trim(), importedAt: at });
+  });
+  staffValues.slice(1).forEach(function (r) {
+    if (!schoolMatches_(r[ti.school], schoolId, schoolName)) return;
+    var email = normEmail_(r[ti.email]);
+    if (!/^[^@\s]+@[^@\s]+$/.test(email)) return;
+    var name = (String(r[ti.family] || '').trim() + ' ' + String(r[ti.given] || '').trim()).trim();
+    staff.push({ schoolId: String(schoolId), email: email, name: name, title: String(r[ti.title] || '').trim(),
+      status: isActiveStatus_(r[ti.status], STAFF_ACTIVE_STATUS) ? 'active' : String(r[ti.status] || '').trim(), importedAt: at });
+  });
+  return { roster: roster, staff: staff };
+}
+
 /*
  * preview-server.js — 画面の見本（preview/index.html）用の、ブラウザの中だけで動くにせもののサーバー。
  * Code.gs の公開関数と同じ形の値を返す。入力の検査は本物の Rules.gs（Config.gs）を使う。
@@ -695,14 +779,19 @@ function newId_() { return Utilities.getUuid(); }
     getSchoolSetup: function (actingAs) {
       var a = actor(actingAs);
       if (!a.isSetup) err('この操作は、学校の設定担当の先生だけができます。');
-      return { schoolName: school.schoolName, rosterSheetUrl: 'https://docs.google.com/spreadsheets/d/xxxxxxxxxxxxxxxxxxxx/edit',
+      return { rosterLinked: true, rosterImportedAt: '2026-11-15 09:30:00', schoolName: school.schoolName, rosterSheetUrl: 'https://docs.google.com/spreadsheets/d/xxxxxxxxxxxxxxxxxxxx/edit',
         students: classes['3-1'].length + classes['3-2'].length,
         classes: Object.keys(classes).map(function (k) { return { classKey: k, label: classLabel_(k), count: classes[k].length, homeroom: k === '3-1' ? 'demo.t31@example.com' : '', assistants: [] }; }),
         staff: [{ email: 'demo.setup@example.com', name: 'デモ 教務', title: '教務主任' }, { email: 'demo.t31@example.com', name: 'デモ 担任', title: '教諭' }, { email: 'demo.t32@example.com', name: 'デモ 二組', title: '教諭' }],
         grades: [{ grade: 3, subjects: gradeSubjects[3] }] };
     },
+    importRoster: function (url, actingAs) {
+      var a = actor(actingAs); if (!a.isSetup) err('この操作は、学校の設定担当の先生だけができます。');
+      if (url && !sheetIdFromUrl_(url)) err('スプレッドシートのURLではないようです。名簿マスターのリンクをそのまま貼ってください。');
+      return { students: 54, staff: 3, classes: 2, importedAt: '2026-11-15 10:00:00' };
+    },
     saveAssignments: function (list, actingAs) { var a = actor(actingAs); if (!a.isSetup) err('だめ'); return { count: list.length }; },
-    getAdminView: function () { return { fiscalYear: '2026', schools: [{ schoolId: 'demo', schoolName: 'デモ小学校', active: true, termSystem: '3学期制', setupTeachers: ['demo.setup@example.com'], students: 54, hasDataFile: true }] }; },
+    getAdminView: function () { return { fiscalYear: '2026', schoolList: SCHOOL_LIST.map(function (x) { return { schoolId: x[0], schoolName: x[1] }; }), schools: [{ schoolId: 'demo', schoolName: 'デモ小学校', active: true, termSystem: '3学期制', setupTeachers: ['demo.setup@example.com'], students: 54, hasDataFile: true }] }; },
     registerSchool: function () { return api.getAdminView(); },
     updateSchool: function () { return api.getAdminView(); }
   };
@@ -1984,10 +2073,25 @@ function newId_() { return Utilities.getUuid(); }
     var wrap = h('div', { class: 'stack' });
     wrap.appendChild(h('div', { class: 'row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる'),
       h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, '学校の設定'), h('span', { class: 'muted' }, st.schoolName)));
-    wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sora' }, '① 名簿')),
-      h('p', null, '児童 ', h('b', null, st.students), '人・クラス ', h('b', null, st.classes.length), '・教職員 ', h('b', null, st.staff.length), '人'),
-      h('p', { class: 'muted small' }, '名簿は、ふりかえりシートと同じ「名簿マスター」から取り込みます。取り込み用の名簿シートは、設定担当の先生だけに共有されています。'),
-      h('a', { href: st.rosterSheetUrl, target: '_blank', rel: 'noopener' }, '取り込み用の名簿シートをひらく')));
+    var urlIn = h('input', { class: 'text', type: 'url', style: { flex: '1', minWidth: '260px' }, placeholder: 'https://docs.google.com/spreadsheets/d/…（名簿マスターのリンク）', 'aria-label': '名簿マスターのリンク' });
+    function doImport(url) {
+      var btns = document.querySelectorAll('.roster-btn');
+      Array.prototype.forEach.call(btns, function (b) { b.disabled = true; });
+      toast('名簿を取り込んでいます…');
+      call('importRoster', url).then(function (r) {
+        toast('取り込みました（児童 ' + r.students + '人・' + r.classes + 'クラス・教職員 ' + r.staff + '人）');
+        return call('bootstrap').then(function (b) { S.boot = b; return openSetup(); });
+      }).catch(function (e) { fail(e); Array.prototype.forEach.call(btns, function (b) { b.disabled = false; }); });
+    }
+    wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sora' }, '① 名簿'), h('span', { class: 'sub' }, 'ふりかえりシートと同じ「名簿マスター」から取り込みます')),
+      h('p', null, '児童 ', h('b', null, st.students), '人・クラス ', h('b', null, st.classes.length), '・教職員 ', h('b', null, st.staff.length), '人',
+        st.rosterImportedAt ? h('span', { class: 'muted small' }, '　（' + st.rosterImportedAt + ' に取り込み）') : null),
+      h('div', { class: 'row' }, urlIn, h('button', { class: 'btn sora roster-btn', onclick: function () {
+        if (!urlIn.value.trim()) { toast('名簿マスターのリンクを貼ってください', true); return; }
+        doImport(urlIn.value.trim());
+      } }, '📥 このリンクから取り込む'),
+        st.rosterLinked ? h('button', { class: 'btn plain roster-btn', onclick: function () { doImport(''); } }, '🔄 前のリンクから取り込みなおす') : null),
+      h('p', { class: 'muted small' }, '名簿マスターをひらいて、ブラウザの上のリンク（URL）をそのまま貼ってください。取り込むのは「年・組・番・名前・Googleアカウント・状態」と、教職員の「名前・役職・Googleアカウント・状態」だけです（住所や保護者の情報は読みません）。転入・転出があったら「取り込みなおす」を押してください。')));
 
     var staffOpts = [['', '（なし）']].concat(st.staff.map(function (x) { return [x.email, x.name + (x.title ? '（' + x.title + '）' : '')]; }));
     var assign = st.classes.map(function (c) { return { classKey: c.classKey, homeroom: c.homeroom, assistants: c.assistants.slice() }; });
@@ -2054,7 +2158,9 @@ function newId_() { return Utilities.getUuid(); }
   // ================= アプリ管理者 =================
   function viewAdmin() {
     var a = S.admin;
-    var f = { schoolId: '', schoolName: '', termSystem: '3学期制', email: '', teacherName: '' };
+    var f = { schoolId: '', termSystem: '3学期制', email: '', teacherName: '' };
+    var done = {};
+    a.schools.forEach(function (x) { done[x.schoolId] = true; });
     function inp(key, ph, w) { return h('input', { class: 'text', placeholder: ph, style: { width: w || '180px' }, oninput: function (e) { f[key] = e.target.value; } }); }
     return h('div', { class: 'stack' },
       S.boot && S.boot.role === 'teacher' ? h('div', null, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる')) : null,
@@ -2068,10 +2174,24 @@ function newId_() { return Utilities.getUuid(); }
               } }, x.active ? '休止にする' : '利用中にする')));
           }))) : h('p', { class: 'muted' }, 'まだ学校がありません。')),
       h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sora' }, '学校を登録する')),
-        h('div', { class: 'row' }, inp('schoolId', '学校コード（例: daianji-nishi）', '240px'), inp('schoolName', '学校名'),
-          h('select', { class: 'text', onchange: function (e) { f.termSystem = e.target.value; } }, ['3学期制', '2学期制'].map(function (t) { return h('option', { value: t }, t); }))),
+        h('div', { class: 'row' },
+          h('select', { class: 'text', style: { minWidth: '300px' }, 'aria-label': '学校', onchange: function (e) { f.schoolId = e.target.value; } },
+            [h('option', { value: '' }, '学校をえらぶ')].concat((a.schoolList || []).map(function (x) {
+              return h('option', { value: x.schoolId }, x.schoolId + '　' + x.schoolName + (done[x.schoolId] ? '（登録ずみ）' : ''));
+            }))),
+          h('select', { class: 'text', 'aria-label': '学期制', onchange: function (e) { f.termSystem = e.target.value; } }, ['3学期制', '2学期制'].map(function (t) { return h('option', { value: t }, t); }))),
         h('div', { class: 'row', style: { marginTop: '8px' } }, inp('email', '設定担当の先生のメール', '260px'), inp('teacherName', '先生の名前'),
-          h('button', { class: 'btn wakaba', onclick: function () { call('registerSchool', f).then(function (r) { S.admin = r; toast('登録しました'); render(); }).catch(fail); } }, '登録する'))));
+          h('button', { class: 'btn wakaba', onclick: function (ev) {
+            if (!f.schoolId) { toast('学校をえらんでください', true); return; }
+            ev.target.disabled = true;
+            call('registerSchool', f).then(function (r) {
+              S.admin = r;
+              toast('登録しました');
+              // 登録した人が自分なら、そのまま先生の画面へ（読みこみなおさなくてよい）
+              return call('bootstrap').then(function (b) { S.boot = b; S.view = b.role === 'teacher' ? 'home' : 'admin'; render(); });
+            }).catch(function (e) { ev.target.disabled = false; fail(e); });
+          } }, '登録する')),
+        h('p', { class: 'muted small' }, '登録した先生（設定担当）は、アプリをひらくと「学校の設定」から名簿を取り込めます。')));
   }
 
   start();

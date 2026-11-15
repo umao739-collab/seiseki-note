@@ -64,7 +64,7 @@ run('S06 Webアプリは「デプロイした人として実行」・学校の�
 });
 run('S07 外から読みこむのは Google Fonts だけ', () => {
   htmlFiles.forEach((f) => (read(f).match(/https?:\/\/[^\s"')]+/g) || []).forEach((u) => {
-    ok(u === 'http://www.w3.org/2000/svg' || /^https:\/\/fonts\.(googleapis|gstatic)\.com(\/|$)/.test(u) || /^https:\/\/docs\.google\.com\/spreadsheets\/d\/'$/.test(u), f + ': ' + u);
+    ok(u === 'http://www.w3.org/2000/svg' || /^https:\/\/fonts\.(googleapis|gstatic)\.com(\/|$)/.test(u) || /^https:\/\/docs\.google\.com\/spreadsheets\/d\/('|…)/.test(u), f + ': ' + u);
   }));
 });
 run('S08 成績を外に出す口がない（UrlFetchApp・メール・console.log）', () => {
@@ -125,6 +125,39 @@ run('R07 担任の割り当ての検査', () => {
   eq(r.map((x) => x.role), ['homeroom', 'assistant']);
   throws(() => ctx.normalizeAssignments_([{ classKey: '3-9', homeroom: '' }], ['3-1'], []), /クラス/);
   throws(() => ctx.normalizeAssignments_([{ classKey: '3-1', homeroom: 'z@example.com' }], ['3-1'], ['t@example.com']), /教職員/);
+});
+
+run('R08 名簿マスター: 学校コードで見分け、決まった列だけを取り込む', () => {
+  ok(ctx.schoolMatches_('nr-435_大安寺西小学校', '435', '奈良市立大安寺西小学校'));
+  ok(!ctx.schoolMatches_('nr-408_大安寺小学校', '435', '奈良市立大安寺西小学校'));
+  ok(!ctx.schoolMatches_('nr-4350_どこか', '435', 'x'));
+  ok(ctx.schoolMatches_('大安寺西小学校', 'abc', '奈良市立大安寺西小学校'), 'コードの無い書き方は名前で');
+  ok(!ctx.schoolMatches_('', '435', 'x'));
+  ok(ctx.isActiveStatus_('active,multi', ['active']) && !ctx.isActiveStatus_('inactive', ['active']));
+  const stu = [['状態', '学校', '姓', '名', 'Googleアカウント', '年', '組', '番'],
+    ['active', 'nr-435_大安寺西小学校', 'みほん', 'いち', 'S1@example.com', '３', '1', '2'],
+    ['active', 'nr-408_大安寺小学校', 'よそ', 'の子', 's2@example.com', '3', '1', '1'],
+    ['転出', 'nr-435_大安寺西小学校', 'てん', 'しゅつ', 's3@example.com', '3', '1', '3'],
+    ['active', 'nr-435_大安寺西小学校', 'メール', 'なし', '', '3', '1', '4']];
+  const stf = [['状態', '学校', '姓', '名', 'Googleアカウント', '役職'],
+    ['active,multi', 'nr-435_大安寺西小学校', 'みほん', '先生', 't1@example.com', '教務主任'],
+    ['active', 'nr-408_大安寺小学校', 'よそ', '先生', 't2@example.com', '教諭']];
+  const p = ctx.parseRosterMaster_(stu, stf, '435', '奈良市立大安寺西小学校', 'now');
+  eq(p.roster.map((x) => [x.email, x.name, x.grade, x.classNo, x.number, x.status]),
+    [['s1@example.com', 'みほん いち', '3', '1', '2', 'active'], ['s3@example.com', 'てん しゅつ', '3', '1', '3', '転出']]);
+  eq(p.staff.map((x) => [x.email, x.title, x.status]), [['t1@example.com', '教務主任', 'active']]);
+  throws(() => ctx.parseRosterMaster_([['状態', '学校']], stf, '435', 'x', 'now'), /姓/);
+});
+run('R09 名簿マスターのリンク', () => {
+  const id = '13DsCYgI0HgsxOiB0iX7-YOmXyb5O6VrxtPFf_S5G4_w'.replace(/./g, 'a');
+  eq(ctx.sheetIdFromUrl_('https://docs.google.com/spreadsheets/d/' + id + '/edit?gid=1#gid=1'), id);
+  eq(ctx.sheetIdFromUrl_('https://evil.example.com/spreadsheets/d/' + id), '');
+  eq(ctx.sheetIdFromUrl_('javascript:alert(1)'), '');
+});
+run('R10 学校の一覧（コードは3けたの数・重なりなし）', () => {
+  const codes = ctx.SCHOOL_LIST.map((x) => x[0]);
+  ok(codes.every((c) => /^\d{3}$/.test(c)) && new Set(codes).size === codes.length);
+  ok(ctx.SCHOOL_LIST.some((x) => x[0] === '435' && x[1] === '奈良市立大安寺西小学校'));
 });
 
 console.log('\n■ 成績の計算（Logic.html）');

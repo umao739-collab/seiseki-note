@@ -657,10 +657,25 @@
     var wrap = h('div', { class: 'stack' });
     wrap.appendChild(h('div', { class: 'row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる'),
       h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, '学校の設定'), h('span', { class: 'muted' }, st.schoolName)));
-    wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sora' }, '① 名簿')),
-      h('p', null, '児童 ', h('b', null, st.students), '人・クラス ', h('b', null, st.classes.length), '・教職員 ', h('b', null, st.staff.length), '人'),
-      h('p', { class: 'muted small' }, '名簿は、ふりかえりシートと同じ「名簿マスター」から取り込みます。取り込み用の名簿シートは、設定担当の先生だけに共有されています。'),
-      h('a', { href: st.rosterSheetUrl, target: '_blank', rel: 'noopener' }, '取り込み用の名簿シートをひらく')));
+    var urlIn = h('input', { class: 'text', type: 'url', style: { flex: '1', minWidth: '260px' }, placeholder: 'https://docs.google.com/spreadsheets/d/…（名簿マスターのリンク）', 'aria-label': '名簿マスターのリンク' });
+    function doImport(url) {
+      var btns = document.querySelectorAll('.roster-btn');
+      Array.prototype.forEach.call(btns, function (b) { b.disabled = true; });
+      toast('名簿を取り込んでいます…');
+      call('importRoster', url).then(function (r) {
+        toast('取り込みました（児童 ' + r.students + '人・' + r.classes + 'クラス・教職員 ' + r.staff + '人）');
+        return call('bootstrap').then(function (b) { S.boot = b; return openSetup(); });
+      }).catch(function (e) { fail(e); Array.prototype.forEach.call(btns, function (b) { b.disabled = false; }); });
+    }
+    wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sora' }, '① 名簿'), h('span', { class: 'sub' }, 'ふりかえりシートと同じ「名簿マスター」から取り込みます')),
+      h('p', null, '児童 ', h('b', null, st.students), '人・クラス ', h('b', null, st.classes.length), '・教職員 ', h('b', null, st.staff.length), '人',
+        st.rosterImportedAt ? h('span', { class: 'muted small' }, '　（' + st.rosterImportedAt + ' に取り込み）') : null),
+      h('div', { class: 'row' }, urlIn, h('button', { class: 'btn sora roster-btn', onclick: function () {
+        if (!urlIn.value.trim()) { toast('名簿マスターのリンクを貼ってください', true); return; }
+        doImport(urlIn.value.trim());
+      } }, '📥 このリンクから取り込む'),
+        st.rosterLinked ? h('button', { class: 'btn plain roster-btn', onclick: function () { doImport(''); } }, '🔄 前のリンクから取り込みなおす') : null),
+      h('p', { class: 'muted small' }, '名簿マスターをひらいて、ブラウザの上のリンク（URL）をそのまま貼ってください。取り込むのは「年・組・番・名前・Googleアカウント・状態」と、教職員の「名前・役職・Googleアカウント・状態」だけです（住所や保護者の情報は読みません）。転入・転出があったら「取り込みなおす」を押してください。')));
 
     var staffOpts = [['', '（なし）']].concat(st.staff.map(function (x) { return [x.email, x.name + (x.title ? '（' + x.title + '）' : '')]; }));
     var assign = st.classes.map(function (c) { return { classKey: c.classKey, homeroom: c.homeroom, assistants: c.assistants.slice() }; });
@@ -727,7 +742,9 @@
   // ================= アプリ管理者 =================
   function viewAdmin() {
     var a = S.admin;
-    var f = { schoolId: '', schoolName: '', termSystem: '3学期制', email: '', teacherName: '' };
+    var f = { schoolId: '', termSystem: '3学期制', email: '', teacherName: '' };
+    var done = {};
+    a.schools.forEach(function (x) { done[x.schoolId] = true; });
     function inp(key, ph, w) { return h('input', { class: 'text', placeholder: ph, style: { width: w || '180px' }, oninput: function (e) { f[key] = e.target.value; } }); }
     return h('div', { class: 'stack' },
       S.boot && S.boot.role === 'teacher' ? h('div', null, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる')) : null,
@@ -741,10 +758,24 @@
               } }, x.active ? '休止にする' : '利用中にする')));
           }))) : h('p', { class: 'muted' }, 'まだ学校がありません。')),
       h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sora' }, '学校を登録する')),
-        h('div', { class: 'row' }, inp('schoolId', '学校コード（例: daianji-nishi）', '240px'), inp('schoolName', '学校名'),
-          h('select', { class: 'text', onchange: function (e) { f.termSystem = e.target.value; } }, ['3学期制', '2学期制'].map(function (t) { return h('option', { value: t }, t); }))),
+        h('div', { class: 'row' },
+          h('select', { class: 'text', style: { minWidth: '300px' }, 'aria-label': '学校', onchange: function (e) { f.schoolId = e.target.value; } },
+            [h('option', { value: '' }, '学校をえらぶ')].concat((a.schoolList || []).map(function (x) {
+              return h('option', { value: x.schoolId }, x.schoolId + '　' + x.schoolName + (done[x.schoolId] ? '（登録ずみ）' : ''));
+            }))),
+          h('select', { class: 'text', 'aria-label': '学期制', onchange: function (e) { f.termSystem = e.target.value; } }, ['3学期制', '2学期制'].map(function (t) { return h('option', { value: t }, t); }))),
         h('div', { class: 'row', style: { marginTop: '8px' } }, inp('email', '設定担当の先生のメール', '260px'), inp('teacherName', '先生の名前'),
-          h('button', { class: 'btn wakaba', onclick: function () { call('registerSchool', f).then(function (r) { S.admin = r; toast('登録しました'); render(); }).catch(fail); } }, '登録する'))));
+          h('button', { class: 'btn wakaba', onclick: function (ev) {
+            if (!f.schoolId) { toast('学校をえらんでください', true); return; }
+            ev.target.disabled = true;
+            call('registerSchool', f).then(function (r) {
+              S.admin = r;
+              toast('登録しました');
+              // 登録した人が自分なら、そのまま先生の画面へ（読みこみなおさなくてよい）
+              return call('bootstrap').then(function (b) { S.boot = b; S.view = b.role === 'teacher' ? 'home' : 'admin'; render(); });
+            }).catch(function (e) { ev.target.disabled = false; fail(e); });
+          } }, '登録する')),
+        h('p', { class: 'muted small' }, '登録した先生（設定担当）は、アプリをひらくと「学校の設定」から名簿を取り込めます。')));
   }
 
   start();

@@ -13,7 +13,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.0.1';
+var APP_VERSION = '2.1.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -24,7 +24,8 @@ var SCHEMA = {
   /** 設定担当の先生（アプリ管理者が登録）。role='setup'。 */
   teachers: ['schoolId', 'email', 'name', 'active', 'role'],
   dataFiles: ['schoolId', 'fiscalYear', 'spreadsheetId', 'status'],
-  schoolRosters: ['schoolId', 'spreadsheetId', 'updatedAt'],
+  /** 学校ごとの取り込み用名簿シートと、取り込み元の名簿マスター（ID は画面に返さない）。 */
+  schoolRosters: ['schoolId', 'spreadsheetId', 'updatedAt', 'sourceId', 'importedAt'],
   /** 担任・担当（設定担当が割り当てる）。 */
   assignments: ['schoolId', 'classKey', 'email', 'role', 'updatedAt', 'updatedBy'],
   // ----- 取り込み用名簿シート（学校ごと・取り込みアプリが書く） -----
@@ -54,7 +55,7 @@ var MAX_CHANGES = 5000;
 
 /** 在籍とみなす名簿の「状態」。名簿マスターは active。 */
 var ENROLLED_STATUS = ['在籍', 'active'];
-var STAFF_ACTIVE_STATUS = ['active', '在職'];
+var STAFF_ACTIVE_STATUS = ['active', '在職'];  // 名簿マスターは「active,multi」のようにカンマで続くことがある
 /** この役職の人は、その学校の設定担当（学校の全クラスを見られる）。 */
 var SETUP_TITLES = ['校長', '教頭', '教務主任'];
 var ASSIGN_ROLE = { homeroom: 'homeroom', assistant: 'assistant' };
@@ -62,6 +63,27 @@ var MAX_ASSISTANTS = 20;
 var DATA_STATUS = { open: 'open', closed: 'closed' };
 var TEST_SCHOOL_PREFIX = 't-';
 var SCHOOL_ROSTER_MARK = 'seiseki-note-roster';
+
+/** 奈良市の学校コードと学校名（学校の登録のドロップダウン）。公開されている情報。 */
+var SCHOOL_LIST = [
+  ['401', '奈良市立椿井小学校'], ['402', '奈良市立飛鳥小学校'], ['403', '奈良市立鼓阪小学校'], ['404', '奈良市立済美小学校'], ['405', '奈良市立佐保小学校'],
+  ['406', '奈良市立大宮小学校'], ['407', '奈良市立都跡小学校'], ['408', '奈良市立大安寺小学校'], ['409', '奈良市立東市小学校'], ['410', '奈良市立平城小学校'],
+  ['411', '奈良市立辰市小学校'], ['412', '奈良市立明治小学校'], ['413', '奈良市立帯解小学校'], ['415', '奈良市立伏見小学校'], ['416', '奈良市立富雄南小学校'],
+  ['417', '奈良市立富雄北小学校'], ['418', '奈良市田原小学校'], ['420', '奈良市立柳生小学校'], ['422', '奈良市立興東小学校'], ['423', '奈良市立あやめ池小学校'],
+  ['424', '奈良市立鶴舞小学校'], ['425', '奈良市立鳥見小学校'], ['426', '奈良市立登美ヶ丘小学校'], ['427', '奈良市立六条小学校'], ['428', '奈良市立青和小学校'],
+  ['430', '奈良市立東登美ケ丘小'], ['431', '奈良市立二名小学校'], ['432', '奈良市立西大寺北小学校'], ['433', '奈良市立富雄第三小学校'], ['434', '奈良市立平城西小学校'],
+  ['435', '奈良市立大安寺西小学校'], ['436', '奈良市立三碓小学校'], ['437', '奈良市立ならやま小学校'], ['438', '奈良市立朱雀小学校'], ['439', '奈良市立済美南小学校'],
+  ['440', '奈良市立鼓阪北小学校'], ['441', '奈良市立伏見南小学校'], ['442', '奈良市立佐保台小学校'], ['443', '奈良市立佐保川小学校'], ['444', '奈良市立左京小学校'],
+  ['445', '奈良市立月ヶ瀬小学校'], ['447', '奈良市立都祁小学校'],
+  ['501', '奈良市立春日中学校'], ['502', '奈良市立三笠中学校'], ['503', '奈良市立若草中学校'], ['504', '奈良市立伏見中学校'], ['505', '奈良市立富雄中学校'],
+  ['506', '奈良市立都南中学校'], ['507', '奈良市田原中学校'], ['509', '奈良市立興東館柳生中学校'], ['510', '奈良市立登美ヶ丘中学校'], ['511', '奈良市立ならやま中学校'],
+  ['512', '奈良市立二名中学校'], ['513', '奈良市立京西中学校'], ['514', '奈良市立富雄南中学校'], ['515', '奈良市立平城中学校'], ['516', '奈良市立飛鳥中学校'],
+  ['517', '奈良市立登美ヶ丘北中学校'], ['518', '奈良市立都跡中学校'], ['519', '奈良市立平城東中学校'], ['520', '奈良市立月ヶ瀬中学校'], ['521', '奈良市立都祁中学校'],
+  ['522', '奈良市立富雄第三中学校'], ['523', '奈良市立一条高等学校附属中学校']
+];
+/** 名簿マスターの見出し（この名前の列だけを読む。住所・保護者などの列は読まない）。 */
+var MASTER_STUDENT_COLS = { status: '状態', school: '学校', family: '姓', given: '名', email: 'Googleアカウント', grade: '年', classNo: '組', number: '番' };
+var MASTER_STAFF_COLS = { status: '状態', school: '学校', family: '姓', given: '名', email: 'Googleアカウント', title: '役職' };
 
 /** 教科・観点・基準の初期値（SMILEスプレッドシートの「観点名・評価基準設定」と同じ形）。 */
 var KANTEN_KNOW = '知識・技能', KANTEN_THINK = '思考・判断・表現', KANTEN_ATTITUDE = '主体的に学習に取り組む態度';
@@ -94,7 +116,7 @@ function defaultSubjectsForGrade_(grade) {
  * tools/run-local-tests.js がグローバル関数の一覧と照らし合わせる。
  */
 var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
-  'saveShoken', 'saveGradeSubjects', 'getSchoolSetup', 'saveAssignments', 'getAdminView', 'registerSchool', 'updateSchool'];
+  'saveShoken', 'saveGradeSubjects', 'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
 var ADMIN_FUNCTIONS = ['setup', 'startFiscalYear', 'closeFiscalYear'];
 var ENTRY_FUNCTIONS = ['doGet'];
 

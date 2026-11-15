@@ -163,14 +163,19 @@
     getSchoolSetup: function (actingAs) {
       var a = actor(actingAs);
       if (!a.isSetup) err('この操作は、学校の設定担当の先生だけができます。');
-      return { schoolName: school.schoolName, rosterSheetUrl: 'https://docs.google.com/spreadsheets/d/xxxxxxxxxxxxxxxxxxxx/edit',
+      return { rosterLinked: true, rosterImportedAt: '2026-11-15 09:30:00', schoolName: school.schoolName, rosterSheetUrl: 'https://docs.google.com/spreadsheets/d/xxxxxxxxxxxxxxxxxxxx/edit',
         students: classes['3-1'].length + classes['3-2'].length,
         classes: Object.keys(classes).map(function (k) { return { classKey: k, label: classLabel_(k), count: classes[k].length, homeroom: k === '3-1' ? 'demo.t31@example.com' : '', assistants: [] }; }),
         staff: [{ email: 'demo.setup@example.com', name: 'デモ 教務', title: '教務主任' }, { email: 'demo.t31@example.com', name: 'デモ 担任', title: '教諭' }, { email: 'demo.t32@example.com', name: 'デモ 二組', title: '教諭' }],
         grades: [{ grade: 3, subjects: gradeSubjects[3] }] };
     },
+    importRoster: function (url, actingAs) {
+      var a = actor(actingAs); if (!a.isSetup) err('この操作は、学校の設定担当の先生だけができます。');
+      if (url && !sheetIdFromUrl_(url)) err('スプレッドシートのURLではないようです。名簿マスターのリンクをそのまま貼ってください。');
+      return { students: 54, staff: 3, classes: 2, importedAt: '2026-11-15 10:00:00' };
+    },
     saveAssignments: function (list, actingAs) { var a = actor(actingAs); if (!a.isSetup) err('だめ'); return { count: list.length }; },
-    getAdminView: function () { return { fiscalYear: '2026', schools: [{ schoolId: 'demo', schoolName: 'デモ小学校', active: true, termSystem: '3学期制', setupTeachers: ['demo.setup@example.com'], students: 54, hasDataFile: true }] }; },
+    getAdminView: function () { return { fiscalYear: '2026', schoolList: SCHOOL_LIST.map(function (x) { return { schoolId: x[0], schoolName: x[1] }; }), schools: [{ schoolId: 'demo', schoolName: 'デモ小学校', active: true, termSystem: '3学期制', setupTeachers: ['demo.setup@example.com'], students: 54, hasDataFile: true }] }; },
     registerSchool: function () { return api.getAdminView(); },
     updateSchool: function () { return api.getAdminView(); }
   };

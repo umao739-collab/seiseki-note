@@ -265,9 +265,11 @@ function getSchoolSetup(actingAs) {
     var classes = Directory.listSchoolClasses(sid);
     var grades = [];
     classes.forEach(function (c) { var g = gradeOf_(c.classKey); if (grades.indexOf(g) === -1) grades.push(g); });
+    var rrow = Directory.getSchoolRosterRow(sid) || {};
     return {
       schoolName: Directory.getSchool(sid).schoolName,
       rosterSheetUrl: 'https://docs.google.com/spreadsheets/d/' + rosterId + '/edit',
+      rosterLinked: !!rrow.sourceId, rosterImportedAt: rrow.importedAt || '',
       students: Directory.listStudents(sid).length,
       classes: classes.map(function (c) { var a = byClass[c.classKey] || { homeroom: '', assistants: [] }; return { classKey: c.classKey, label: classLabel_(c.classKey), count: c.count, homeroom: a.homeroom, assistants: a.assistants }; }),
       staff: Directory.listStaff(sid),
@@ -293,12 +295,71 @@ function saveAssignments(classes, actingAs) {
   });
 }
 
+/**
+ * 設定担当: 名簿マスターのリンクを貼って、名簿を取り込む（url が空なら、前に貼った名簿マスターから取り込みなおす）。
+ * 読むのは「児童生徒」「教職員」シートの決まった列だけ（住所・保護者などの列は読まない）。
+ * 「学校」の列がこの学校の行だけを、取り込み用名簿シートに書く。画面には件数だけを返す。
+ */
+function importRoster(url, actingAs) {
+  return guard_(function () {
+    var ctx = getContext_(actingAs);
+    requireSetup_(ctx);
+    var sid = ctx.actor.schoolId;
+    var school = Directory.getSchool(sid);
+    var row = Directory.getSchoolRosterRow(sid) || {};
+    var srcId = url ? sheetIdFromUrl_(url) : (row.sourceId || '');
+    if (!srcId) throw appError_(url ? 'スプレッドシートのURLではないようです。名簿マスターのリンクをそのまま貼ってください。' : '名簿マスターのリンクを貼ってください。');
+    var ss;
+    try { ss = SpreadsheetApp.openById(srcId); } catch (e) {
+      throw appError_('この名簿マスターを開けませんでした。アプリ管理者のアカウントで見られるファイルか、確かめてください。');
+    }
+    var now = now_();
+    var parsed = parseRosterMaster_(readColumns_(ss, '児童生徒', MASTER_STUDENT_COLS), readColumns_(ss, '教職員', MASTER_STAFF_COLS), sid, school.schoolName, now);
+    if (!parsed.roster.length && !parsed.staff.length) throw appError_('この名簿マスターに「' + school.schoolName + '」の行が見つかりませんでした。');
+    var rosterId = SchoolRoster.ensure(sid);
+    SchoolRoster.write(rosterId, sid, parsed);
+    Store.withLock(function () {
+      var sh = ensureSheetWithHeader_(SpreadsheetApp.openById(getMasterId_()), 'schoolRosters', SCHEMA.schoolRosters);
+      var values = sh.getDataRange().getDisplayValues();
+      for (var r = 1; r < values.length; r++) {
+        if (values[r][0] !== sid) continue;
+        sh.getRange(r + 1, SCHEMA.schoolRosters.indexOf('sourceId') + 1, 1, 2).setNumberFormat('@').setValues([[srcId, now]]);
+      }
+    });
+    Directory.clear();
+    var classes = {};
+    parsed.roster.forEach(function (x) { if (x.status === 'active') classes[x.grade + '-' + x.classNo] = true; });
+    return {
+      students: parsed.roster.filter(function (x) { return x.status === 'active'; }).length,
+      staff: parsed.staff.filter(function (x) { return x.status === 'active'; }).length,
+      classes: Object.keys(classes).length, importedAt: now
+    };
+  });
+}
+/** シートの見出しから、決まった列だけを読む（ほかの列は読まない）。返すのは [見出し, 行...]。 */
+function readColumns_(ss, sheetName, want) {
+  var sh = ss.getSheetByName(sheetName);
+  if (!sh) throw appError_('「' + sheetName + '」シートがありません。名簿マスターのリンクか、確かめてください。');
+  var last = sh.getLastRow();
+  var head = sh.getRange(1, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(function (h) { return String(h).trim(); });
+  var names = Object.keys(want).map(function (k) { return want[k]; });
+  var columns = names.map(function (n) {
+    var i = head.indexOf(n);
+    if (i === -1) throw appError_('名簿マスターの「' + sheetName + '」シートに「' + n + '」の列が見つかりません。');
+    return last >= 2 ? sh.getRange(2, i + 1, last - 1, 1).getDisplayValues().map(function (r) { return r[0]; }) : [];
+  });
+  var out = [names];
+  for (var r = 0; r < Math.max(0, last - 1); r++) out.push(columns.map(function (c) { return c[r]; }));
+  return out;
+}
+
 // ================= アプリ管理者 =================
 
 function adminView_() {
   var fy = fiscalYearOf_(today_());
   return {
     fiscalYear: fy,
+    schoolList: SCHOOL_LIST.map(function (x) { return { schoolId: x[0], schoolName: x[1] }; }),
     schools: Directory.listSchools().filter(function (x) { return x.schoolId.indexOf(TEST_SCHOOL_PREFIX) !== 0; }).map(function (x) {
       return { schoolId: x.schoolId, schoolName: x.schoolName, active: Directory.isActive(x.active), termSystem: x.termSystem || '3学期制',
         setupTeachers: Directory.listSetupTeacherEmails(x.schoolId), students: Directory.listStudents(x.schoolId).length,
@@ -319,8 +380,9 @@ function registerSchool(input, actingAs) {
     requireAdmin_(getContext_(actingAs));
     checkObject_(input);
     var schoolId = String(input.schoolId || '').trim();
-    if (!/^[a-z0-9-]{2,30}$/.test(schoolId)) throw appError_('学校コードは、小文字の英数字とハイフンで2〜30字にしてください。');
-    var schoolName = checkText_(input.schoolName, MAX_LEN.schoolName, '学校名');
+    var listed = SCHOOL_LIST.filter(function (x) { return x[0] === schoolId; })[0];
+    if (!listed) throw appError_('学校を一覧からえらんでください。');
+    var schoolName = listed[1];
     var termSystem = TERM_LABELS[input.termSystem] ? input.termSystem : '3学期制';
     var email = normEmail_(input.email);
     if (!/^[^@\s]+@[^@\s]+$/.test(email)) throw appError_('設定担当の先生のメールを入れてください。');

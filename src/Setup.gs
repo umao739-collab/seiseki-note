@@ -133,7 +133,26 @@ var SchoolRoster = (function () {
     });
     allowed.forEach(function (e) { if (editors.indexOf(e) === -1 && !(isDemoMode_() && /@example\.com$/.test(e))) file.addEditor(e); });
   }
-  return { ensure: ensure, syncEditors: syncEditors };
+  /** 取り込んだ名簿で、その学校の roster・staff シートをまるごと入れかえる。 */
+  function write(id, schoolId, parsed) {
+    Store.withLock(function () {
+      var ss = SpreadsheetApp.openById(id);
+      [['roster', SCHEMA.schoolRoster, parsed.roster], ['staff', SCHEMA.schoolStaff, parsed.staff]].forEach(function (x) {
+        var sh = ensureSheetWithHeader_(ss, x[0], x[1]);
+        var keep = [];
+        if (sh.getLastRow() >= 2) {
+          keep = sh.getRange(2, 1, sh.getLastRow() - 1, x[1].length).getDisplayValues().filter(function (r) { return r[0] !== String(schoolId) && r.join('') !== ''; });
+          sh.getRange(2, 1, sh.getLastRow() - 1, x[1].length).clearContent();
+        }
+        var rows = keep.concat(x[2].map(function (o) { return x[1].map(function (k) { return o[k] === undefined ? '' : String(o[k]); }); }));
+        if (rows.length) {
+          if (rows.length + 1 > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
+          sh.getRange(2, 1, rows.length, x[1].length).setNumberFormat('@').setValues(rows.map(function (r) { return r.map(escapeFormula_); }));
+        }
+      });
+    });
+  }
+  return { ensure: ensure, syncEditors: syncEditors, write: write };
 })();
 
 /** デモのペルソナ（実在の人は使わない）。 */
