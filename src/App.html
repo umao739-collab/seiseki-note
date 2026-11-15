@@ -422,7 +422,6 @@
     var cd = S.cd;
     var url = h('input', { class: 'text', type: 'url', style: { flex: '1', minWidth: '260px' }, 'aria-label': 'SMILE ファイルのリンク', placeholder: 'SMILE スプレッドシートのリンク（ブラウザの上の URL）' });
     var result = h('div');
-    var withCrit = false;
     function showPreview(r, link) {
       clear(result);
       var st = r.students;
@@ -440,13 +439,12 @@
         (st.moved || []).length ? h('details', { class: 'small' }, h('summary', null, '番号がずれていた子（名前で合わせて入れます・' + st.moved.length + '人）'),
           h('ul', null, st.moved.map(function (x) { return h('li', null, x.smileName + '　SMILE ' + x.no + '番 → 名簿 ' + x.rosterNo + '番'); }))) : null,
         r.skipped.length ? h('details', { class: 'small' }, h('summary', null, '取りこまないもの（' + r.skipped.length + '）'), h('ul', null, r.skipped.map(function (x) { return h('li', null, x); }))) : null,
-        r.thresholds ? h('div', { style: { margin: '8px 0' } }, h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: function (e) { withCrit = e.target.checked; } }),
-          'SMILE の A・B の基準も「評価の基準」に入れる（A になる %・C になる % として）')) : null,
+        r.thresholds ? h('p', { class: 'small' }, '評価の基準（A になる %・C になる %）も、SMILE で決めていたとおりに引き継ぎます。') : null,
         h('p', { class: 'muted small' }, '同じ教科・学期に同じ名前のテストがあるときは、配点をそろえて点数を上書きします。アプリにしかないテストと点数は消しません。'),
         h('div', { class: 'row' }, h('span', { class: 'spacer' }),
           h('button', { class: 'btn wakaba', onclick: function (e) {
             e.target.disabled = true; e.target.textContent = '取りこんでいます…';
-            call('importSmile', cd.classKey, link, withCrit).then(function (x) {
+            call('importSmile', cd.classKey, link).then(function (x) {
               toast('取りこみました（テスト ' + x.tests + '・' + x.students + '人ぶんの点数）');
               return reloadClass();
             }).catch(function (err) { e.target.disabled = false; e.target.textContent = '📥 取りこむ'; fail(err); });

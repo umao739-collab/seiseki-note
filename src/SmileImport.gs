@@ -22,7 +22,6 @@ var UNIT_HEAD_ = '単元名／観点';
 var AVG_HEAD_ = '学級平均';
 var TOTAL_HEAD_ = '単元合計';
 var EVAL_HEAD_ = '単元評価';
-var DEFAULT_TH_ = { a: 80, b: 50 };
 
 function cell_(values, r, c) {
   var row = values[r];
@@ -95,7 +94,7 @@ function parseSubject_(name, values, nStudents) {
       if (cell_(values, r, c2) === UNIT_HEAD_) { limit = c2; break; }
     }
     var a = thresholdIn_(values, r - 2, 'A', limit), b = thresholdIn_(values, r - 1, 'B', limit);
-    thresholds[term] = { a: a === null ? DEFAULT_TH_.a : a, b: b === null ? DEFAULT_TH_.b : b };
+    if (a !== null && b !== null) thresholds[term] = { a: a, b: b }; // 書いていないときは引き継がない
     var avgRow = -1;
     for (var k = 1; k <= 6; k++) {
       if (cell_(values, r + k, 1) === AVG_HEAD_) { avgRow = r + k; break; }
@@ -282,9 +281,9 @@ function previewSmileImport(classKey, url, actingAs) {
 
 /**
  * SMILE から取りこむ。同じ教科・学期に同じ名前のテストがあれば配点を合わせて点数を上書きし、無ければ足す。
- * アプリにしかないテストと点数は消さない。withCriteria なら、SMILE の A・B の基準も評価の基準に入れる。
+ * アプリにしかないテストと点数は消さない。SMILE に A・B の基準が書いてあれば、評価の基準もそのまま引き継ぐ。
  */
-function importSmile(classKey, url, withCriteria, actingAs) {
+function importSmile(classKey, url, actingAs) {
   return guard_(function () {
     var ctx = getContext_(actingAs);
     var cc = classContext_(ctx, classKey);
@@ -310,7 +309,7 @@ function importSmile(classKey, url, withCriteria, actingAs) {
         var id = v.filter(function (x) { return x.name === t.name; })[0].testId;
         Object.keys(t.scores).forEach(function (e) { scoreItems.push({ key: id + '|' + e, testId: id, studentEmail: e, set: t.scores[e] }); });
       });
-      if (withCriteria && plan.thresholds[k]) {
+      if (plan.thresholds[k]) {
         var th = plan.thresholds[k], kanten = {};
         sub.kanten.forEach(function (x) { if (x.test && !x.into) kanten[x.label] = { a: th.a, b: th.b }; });
         writeCriteria_(cc.fileId, cc.classKey, subject, term, validateCriteria_({ kanten: kanten, unit: th }, sub), ctx.me);

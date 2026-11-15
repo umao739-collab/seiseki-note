@@ -147,7 +147,7 @@
         subjects: [{ name: '国語', terms: [{ term: '1学期', tests: 5 }] }, { name: '算数', terms: [{ term: '1学期', tests: 4 }] }],
         students: { smile: 28, matched: 27, mismatch: [{ no: 12, smileName: 'すずらん さきこ', rosterName: 'すずらん さき' }], missing: [] } };
     },
-    importSmile: function (ck, url, withCrit, actingAs) { var a = actor(actingAs); cls(a, ck); return { tests: 9, scores: 243, students: 27 }; },
+    importSmile: function (ck, url, actingAs) { var a = actor(actingAs); cls(a, ck); return { tests: 9, scores: 243, students: 27 }; },
     saveTests: function (ck, subject, term, list, actingAs) {
       var a = actor(actingAs); var c = cls(a, ck);
       var sub = gradeSubjects[gradeOf_(c)].filter(function (s) { return s.name === subject; })[0];
