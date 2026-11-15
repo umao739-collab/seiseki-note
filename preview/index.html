@@ -389,6 +389,10 @@
   }
   button.head { border: none; background: none; padding: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; }
   button.head:hover h1 { text-decoration: underline wavy rgba(243, 240, 230, .35); }
+  .logo { position: relative; display: inline-block; width: 72px; height: 76px; flex: 0 0 auto; }
+  .logo .logo-pencil { position: absolute; left: 22px; bottom: -6px; }
+  .still { display: inline-flex; align-items: flex-end; gap: 6px; }
+  .book svg { right: 4px; bottom: 10px; }
 </style>
 
 </head>
@@ -412,7 +416,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.7.0';
+var APP_VERSION = '2.8.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -2193,66 +2197,46 @@ function validateHyoteiRule_(rule, subjectConf) {
   // ================= 絵（すべてオリジナル） =================
   var uid = 0;
   /** 水彩のにじみ（ふちを少しゆらす）フィルター。 */
-  function wcFilter(id, scale) {
-    return s('filter', { id: id, x: '-10%', y: '-10%', width: '120%', height: '120%' },
-      s('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.035', numOctaves: '3', seed: '7', result: 't' }),
-      s('feDisplacementMap', { in: 'SourceGraphic', in2: 't', scale: scale || 7 }),
-      s('feGaussianBlur', { stdDeviation: '0.4' }));
+  // ---------- 文房具の絵（すべてオリジナル）：ノート・えんぴつ・三角定規 ----------
+  /** えんぴつ（色・角度）。 */
+  function pencil(w, c, rot) {
+    return s('svg', { width: w, height: Math.round(w * 0.4), viewBox: '0 0 110 44', 'aria-hidden': 'true' },
+      s('g', { transform: 'rotate(' + (rot === undefined ? -12 : rot) + ' 55 22)' },
+        s('rect', { x: 18, y: 13, width: 64, height: 18, fill: c || '#F2C230' }),
+        s('rect', { x: 18, y: 13, width: 64, height: 6, fill: '#fff', opacity: 0.3 }),
+        s('rect', { x: 18, y: 25, width: 64, height: 6, fill: '#000', opacity: 0.08 }),
+        s('path', { d: 'M82 13 L100 22 L82 31 Z', fill: '#F2D2A9' }),
+        s('path', { d: 'M94 19 L100 22 L94 25 Z', fill: c && c !== '#F2C230' ? c : '#4A4540' }),
+        s('rect', { x: 10, y: 13, width: 9, height: 18, fill: '#B9B4AA' }),
+        s('rect', { x: 12, y: 13, width: 2, height: 18, fill: '#fff', opacity: 0.5 }),
+        s('rect', { x: 3, y: 13, width: 8, height: 18, rx: 3, fill: '#F2A5B0' })));
   }
-  /** 線を少しだけゆらす（手がきの感じ）。顔がくずれないように弱め。 */
-  function softFilter(id) {
-    return s('filter', { id: id, x: '-10%', y: '-10%', width: '120%', height: '120%' },
-      s('feTurbulence', { type: 'fractalNoise', baseFrequency: '0.04', numOctaves: '2', seed: '3', result: 't' }),
-      s('feDisplacementMap', { in: 'SourceGraphic', in2: 't', scale: 1.3 }));
+  /** リングノート。 */
+  function note(w) {
+    return s('svg', { width: w, height: Math.round(w * 1.15), viewBox: '0 0 80 92', 'aria-hidden': 'true' },
+      s('rect', { x: 10, y: 6, width: 62, height: 82, rx: 4, fill: 'rgba(0,0,0,.2)' }),
+      s('rect', { x: 8, y: 4, width: 62, height: 82, rx: 4, fill: '#FFFDF6', stroke: '#C9BCA3', 'stroke-width': 2 }),
+      s('rect', { x: 8, y: 4, width: 14, height: 82, rx: 4, fill: '#3E7CC2' }),
+      s('g', { stroke: '#A9D2F0', 'stroke-width': 1.6 }, [24, 34, 44, 54, 64].map(function (y) { return s('path', { d: 'M28 ' + y + 'h34' }); }), s('path', { d: 'M28 74h24' })),
+      s('path', { d: 'M28 14h22', stroke: '#D9667F', 'stroke-width': 3, 'stroke-linecap': 'round' }),
+      s('g', { fill: '#FFFDF6', stroke: '#8C7663', 'stroke-width': 1.5 }, [16, 30, 44, 58, 72].map(function (y) { return s('circle', { cx: 15, cy: y, r: 2.6 }); })));
   }
-  function cheekGrad(id) {
-    return s('radialGradient', { id: id },
-      s('stop', { offset: '0', 'stop-color': '#F7A9A3', 'stop-opacity': '.85' }),
-      s('stop', { offset: '1', 'stop-color': '#F7A9A3', 'stop-opacity': '0' }));
+  /** 三角定規。 */
+  function ruler(w) {
+    return s('svg', { width: w, height: w, viewBox: '0 0 60 60', 'aria-hidden': 'true' },
+      s('path', { d: 'M6 54 L6 6 L54 54 Z', fill: '#A9D2F0', 'fill-opacity': 0.55, stroke: '#3E7CC2', 'stroke-width': 2 }),
+      s('path', { d: 'M14 46 L14 26 L34 46 Z', fill: 'none', stroke: '#3E7CC2', 'stroke-width': 1.5 }),
+      s('g', { stroke: '#3E7CC2', 'stroke-width': 1.2 }, s('path', { d: 'M6 14h5M6 22h4M6 30h5M6 38h4M6 46h5' })));
   }
-  var INK = '#6B5444';
-  /**
-   * うさぎ（このアプリの案内役）。片耳がぺたんと折れているのが目じるし。
-   * mood: 'normal'（ふつう）/ 'happy'（にっこり）/ 'wow'（おどろき）
-   */
-  function rabbit(size, mood) {
-    var f = 'rb' + (++uid), c = 'ck' + uid;
-    var eyes = mood === 'happy'
-      ? [s('path', { d: 'M34 62 Q39 57 44 62', stroke: '#4A3A2E', 'stroke-width': 2.4, fill: 'none', 'stroke-linecap': 'round' }),
-        s('path', { d: 'M56 62 Q61 57 66 62', stroke: '#4A3A2E', 'stroke-width': 2.4, fill: 'none', 'stroke-linecap': 'round' })]
-      : [s('ellipse', { cx: 39, cy: 62, rx: 3.6, ry: 4.4, fill: '#4A3A2E' }), s('circle', { cx: 40.3, cy: 60.3, r: 1.3, fill: '#fff' }),
-        s('ellipse', { cx: 61, cy: 62, rx: 3.6, ry: 4.4, fill: '#4A3A2E' }), s('circle', { cx: 62.3, cy: 60.3, r: 1.3, fill: '#fff' })];
-    var mouth = mood === 'wow'
-      ? s('ellipse', { cx: 50, cy: 72.5, rx: 2.4, ry: 3, fill: '#8A5A4C' })
-      : s('path', { d: 'M50 69 Q47.5 72 45.5 70 M50 69 Q52.5 72 54.5 70', stroke: INK, 'stroke-width': 1.5, fill: 'none', 'stroke-linecap': 'round' });
-    return s('svg', { width: size, height: size, viewBox: '0 0 100 100', 'aria-hidden': 'true' },
-      s('defs', null, softFilter(f), cheekGrad(c)),
-      s('g', { filter: 'url(#' + f + ')' },
-        s('path', { d: 'M40 40 C 33 26, 33 7, 40 5 C 47 4, 47 24, 46 38 Z', fill: '#FFFDF7', stroke: INK, 'stroke-width': 2 }),
-        s('path', { d: 'M41 35 C 37 24, 38 12, 41 10 C 44 10, 44 22, 44 33 Z', fill: '#F8C6C2' }),
-        s('path', { d: 'M57 36 C 60 24, 70 16, 79 20 C 86 24, 76 32, 62 40 Z', fill: '#FFFDF7', stroke: INK, 'stroke-width': 2 }),
-        s('path', { d: 'M61 35 C 64 27, 71 22, 77 23 C 79 26, 72 30, 64 36 Z', fill: '#F8C6C2' }),
-        s('ellipse', { cx: 50, cy: 63, rx: 31, ry: 26.5, fill: '#FFFDF7', stroke: INK, 'stroke-width': 2 })),
-      s('ellipse', { cx: 32, cy: 70, rx: 8, ry: 5, fill: 'url(#' + c + ')' }),
-      s('ellipse', { cx: 68, cy: 70, rx: 8, ry: 5, fill: 'url(#' + c + ')' }),
-      eyes,
-      s('ellipse', { cx: 50, cy: 67.5, rx: 2, ry: 1.4, fill: '#F09A93' }),
-      mouth);
+  /** 表紙のしるし（ノートとえんぴつ）。 */
+  function logo() {
+    var p = pencil(64, '#F2C230', -30);
+    p.setAttribute('class', 'logo-pencil');
+    return h('span', { class: 'logo' }, note(64), p);
   }
-  /** ことり（まんまる）。 */
-  function bird(size, color) {
-    var f = 'bd' + (++uid), c = 'ck' + uid;
-    return s('svg', { width: size, height: size, viewBox: '0 0 40 40', 'aria-hidden': 'true' },
-      s('defs', null, softFilter(f), cheekGrad(c)),
-      s('g', { filter: 'url(#' + f + ')' },
-        s('path', { d: 'M18 9 Q20 4 23 7', stroke: INK, 'stroke-width': 1.4, fill: 'none', 'stroke-linecap': 'round' }),
-        s('ellipse', { cx: 20, cy: 22, rx: 14, ry: 13, fill: color || '#C7E0F3', stroke: INK, 'stroke-width': 1.6 }),
-        s('path', { d: 'M9 23 Q13 18 18 24 Q13 28 9 23 Z', fill: '#FFFDF7', opacity: .75 })),
-      s('ellipse', { cx: 29, cy: 25, rx: 3.2, ry: 2.2, fill: 'url(#' + c + ')' }),
-      s('ellipse', { cx: 25, cy: 20, rx: 1.7, ry: 2.1, fill: '#4A3A2E' }), s('circle', { cx: 25.6, cy: 19.3, r: .6, fill: '#fff' }),
-      s('path', { d: 'M31 20.5 L35 22 L31 23.5 Z', fill: '#F2B36B' }),
-      s('path', { d: 'M17 34.5 L16.5 37.5 M23 34.5 L23.5 37.5', stroke: INK, 'stroke-width': 1.3, 'stroke-linecap': 'round' }));
-  }
+  /** 「まだない」「ぜんぶ入った」などの所の絵（ノートと三角定規）。 */
+  function stillLife(w) { return h('span', { class: 'still' }, note(w), ruler(Math.round(w * 0.8))); }
+  var PENCILS = ['#E2788D', '#4C8FD6', '#5FA65A', '#9A7BD1', '#E9963F', '#2EA3A8'];
 
   // ================= サーバー =================
   function call(fn) {
@@ -2291,7 +2275,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     return new Promise(function (resolve) {
       var veil = h('div', { class: 'veil' });
       var box = h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true' },
-        h('div', { class: 'row', style: { alignItems: 'flex-start' } }, rabbit(54, 'wow'), h('div', { style: { flex: '1' } }, h('h3', null, title), body)),
+        h('div', { class: 'row', style: { alignItems: 'flex-start' } }, note(46), h('div', { style: { flex: '1' } }, h('h3', null, title), body)),
         h('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '14px' } }, buttons.map(function (b) {
           return h('button', { class: 'btn ' + (b[2] || ''), onclick: function () { document.body.removeChild(veil); resolve(b[1]); } }, b[0]);
         })));
@@ -2353,13 +2337,13 @@ function validateHyoteiRule_(rule, subjectConf) {
     clear(root);
     var who = S.boot ? (S.boot.schoolName ? S.boot.schoolName + '　' : '') + S.boot.name + (S.boot.role === 'admin' ? '' : ' 先生') : '';
     root.appendChild(h('header', { class: 'cover' },
-      h('button', { class: 'head', title: 'メニューにもどる', onclick: goHome }, rabbit(72, 'happy'), h('div', null, h('h1', null, 'せいせきノート'), h('div', { class: 'sub' }, 'テストの点から、通知表・要録・GGまで'))),
+      h('button', { class: 'head', title: 'メニューにもどる', onclick: goHome }, logo(), h('div', null, h('h1', null, 'せいせきノート'), h('div', { class: 'sub' }, 'テストの点から、通知表・要録・GGまで'))),
       who ? h('div', { class: 'who' }, who) : null));
     if (S.isDemo) root.appendChild(h('div', { class: 'demo-bar' }, '🧸 デモ（名前も点数も作りものです）',
       S.actingAs ? h('button', { class: 'linkbtn', onclick: function () { S.actingAs = null; S.boot = null; start(); } }, '体験する人をかえる') : null));
     var body;
-    if (S.view === 'loading') body = h('div', { class: 'loading' }, h('div', { class: 'hop' }, bird(56)), h('p', null, S.msg));
-    else if (S.view === 'error') body = h('div', { class: 'page empty' }, rabbit(90, 'wow'), h('span', { class: 'title' }, 'ひらけませんでした'), h('p', null, S.msg),
+    if (S.view === 'loading') body = h('div', { class: 'loading' }, h('div', { class: 'hop' }, pencil(80, '#F2C230', -20)), h('p', null, S.msg));
+    else if (S.view === 'error') body = h('div', { class: 'page empty' }, stillLife(70), h('span', { class: 'title' }, 'ひらけませんでした'), h('p', null, S.msg),
       h('button', { class: 'btn', onclick: start }, 'もう一度ためす'));
     else if (S.view === 'persona') body = viewPersona();
     else if (S.view === 'home') body = viewHome();
@@ -2386,16 +2370,16 @@ function validateHyoteiRule_(rule, subjectConf) {
   function viewHome() {
     var b = S.boot;
     var wrap = h('div', { class: 'stack' });
-    wrap.appendChild(h('div', { class: 'say' }, bird(52, '#F6C9C6'), h('div', { class: 'bubble' },
+    wrap.appendChild(h('div', { class: 'say' }, pencil(64, '#F2C230', -20), h('div', { class: 'bubble' },
       h('b', null, b.name + ' 先生、こんにちは。'), h('div', { class: 'muted' }, b.fiscalYear + '年度・' + b.termSystem + '　ひらくクラスをえらんでください。'))));
     if (!b.classes.length) {
-      wrap.appendChild(h('div', { class: 'page empty' }, rabbit(90, 'wow'), h('span', { class: 'title' }, 'まだ担当のクラスがありません'),
+      wrap.appendChild(h('div', { class: 'page empty' }, stillLife(70), h('span', { class: 'title' }, 'まだ担当のクラスがありません'),
         h('p', { class: 'muted' }, '学校の設定担当の先生に、担任・担当の割り当てをお願いしてください。')));
     } else {
       wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash sakura' }, 'わたしのクラス')),
         h('div', { class: 'books' }, b.classes.map(function (c, i) {
           return h('button', { class: 'book c' + (i % 6), onclick: function () { openClass(c.classKey); } },
-            h('div', { class: 'bl' }, c.label), h('div', { class: 'bs' }, c.count + '人'), bird(46, ['#F6C9C6', '#C7E0F3', '#CDE5B7', '#DDD0EE', '#F9D8AE', '#F7EBD3'][i % 6]));
+            h('div', { class: 'bl' }, c.label), h('div', { class: 'bs' }, c.count + '人'), pencil(84, PENCILS[i % PENCILS.length], -20));
         }))));
     }
     if (b.isAdmin) {
@@ -2546,7 +2530,7 @@ function validateHyoteiRule_(rule, subjectConf) {
                   .then(function (ok) { if (ok) { list.splice(i, 1); dirty = true; draw(); } });
               } }, '🗑')));
         })));
-      box.appendChild(list.length ? table : h('div', { class: 'empty' }, bird(60), h('span', { class: 'title' }, 'まだテストがありません'), h('p', { class: 'muted' }, '下の「＋ テストを足す」から登録してください。')));
+      box.appendChild(list.length ? table : h('div', { class: 'empty' }, stillLife(60), h('span', { class: 'title' }, 'まだテストがありません'), h('p', { class: 'muted' }, '下の「＋ テストを足す」から登録してください。')));
       box.appendChild(h('div', { class: 'row', style: { marginTop: '12px' } },
         h('button', { class: 'btn plain', onclick: function () { list.push({ testId: '', name: '', points: {} }); dirty = true; draw(); } }, '＋ テストを足す'),
         h('span', { class: 'spacer' }),
@@ -2576,7 +2560,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     }
     draw();
     return h('div', null, pickers({}),
-      h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
+      h('div', { class: 'say', style: { marginBottom: '14px' } }, pencil(58, '#F2C230', -20), h('div', { class: 'bubble small' },
         '学期ごとに、テストの名前と、観点ごとの配点を登録します。配点が空の観点は、そのテストでは使いません。',
         tk.some(function (k) { return k.into; }) ? h('div', { class: 'muted' }, '「' + tk.filter(function (k) { return k.into; }).map(function (k) { return k.label; }).join('・') + '」の点は「' + tk.filter(function (k) { return k.into; })[0].into + '」の評価に入ります。') : null)),
       box);
@@ -2733,7 +2717,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     var cd = S.cd, sub = subjectOf();
     var tests = SL.testsOf(cd, sub.name, S.term);
     var top = pickers({});
-    if (!tests.length) return h('div', null, top, h('div', { class: 'empty' }, bird(70), h('span', { class: 'title' }, 'この学期のテストが、まだ登録されていません'),
+    if (!tests.length) return h('div', null, top, h('div', { class: 'empty' }, stillLife(64), h('span', { class: 'title' }, 'この学期のテストが、まだ登録されていません'),
       h('p', null, h('button', { class: 'btn', onclick: function () { S.tab = 'tests'; render(); } }, '📚 テストを登録する'))));
     var order = sub.kanten.map(function (k) { return k.label; });
     var cols = [];
@@ -2887,10 +2871,9 @@ function validateHyoteiRule_(rule, subjectConf) {
     S.onSaved = summary.refresh;
     var refresh = function () { grid.refresh(); summary.refresh(); };
     return h('div', null, pickers({}),
-      h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
+      h('div', { class: 'say', style: { marginBottom: '14px' } }, pencil(58, '#F2C230', -20), h('div', { class: 'bubble small' },
         'テストの点から、学期の観点の評価を出しています。評価の基準は、下の「評価の基準」で変えられます（「点数を入れる」の画面と同じものです）。',
-        h('br'), '「主体的に学習に取り組む態度」は、先生が A・B・C を入れてください。計算の評価を変えたいときは、そのマスに打ちこめば先生の値（✎）が優先されます。Delete で計算にもどります。',
-        h('br'), '列の並びは GG の「教科等」と同じ（知・思・主' + (sub.hyoteiTerm ? '・評定' : '') + '）なので、範囲をえらんでコピーし、GG の「知」のマスにそのまま貼れます。')),
+        h('br'), '「主体的に学習に取り組む態度」は、先生が A・B・C を入れてください。計算の評価を変えたいときは、そのマスに打ちこめば先生の値（✎）が優先されます。評価できない子は ‐ を入れてください。Delete で計算にもどります。')),
       criteriaPanel(sub, S.term, refresh),
       sub.hyoteiTerm ? hyoteiPanel(sub, S.term, refresh) : null,
       ggCopyBar(sub, S.term),
@@ -2902,7 +2885,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     var grid = evalGrid(YEAR);
     var refresh = function () { grid.refresh(); };
     return h('div', null, pickers({ noTerm: true }),
-      h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
+      h('div', { class: 'say', style: { marginBottom: '14px' } }, pencil(58, '#F2C230', -20), h('div', { class: 'bubble small' },
         '学期ごとの評価（' + cd.terms.join('・') + '）を組み合わせ表に当てて、指導要録の観点の評価を出しています。すべての学期に評価が入っている観点だけが出ます。',
         sub.hyoteiYear ? h('span', null, h('br'), '評定は、下の「評定の表」で決めます。') : null,
         h('div', null, h('button', { class: 'linkbtn', onclick: showCombo }, '学期→1年間の組み合わせ表を見る')))),
