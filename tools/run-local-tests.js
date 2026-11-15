@@ -350,5 +350,10 @@ run('P02 SMILE 取りこみ: 転校で番号がずれても名前で合わせる
   eq(plan.students.moved.map((x) => [x.no, x.rosterNo]), [[3, 2], [4, 3], [5, 4], [6, 5]]);
 });
 
+run('P03 SMILE 取りこみ: 見えない字（異体字セレクタ・ゼロ幅）がついていても同じ名前', () => {
+  eq(ctx.bareName_('松\uDB40\uDD03岡 はな'), ctx.bareName_('松岡 はな'));
+  eq(ctx.bareName_('葛\uFE00西\u200B たろう'), ctx.bareName_('葛西たろう'));
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);

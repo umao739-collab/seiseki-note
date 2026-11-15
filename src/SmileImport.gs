@@ -144,6 +144,8 @@ var NAME_VARIANTS_ = { '髙': '高', '﨑': '崎', '嵜': '崎', '𠮷': '吉', 
 function bareName_(s) {
   var t = String(s || '');
   if (t.normalize) t = t.normalize('NFKC');
+  // 見えない字（異体字セレクタ・ゼロ幅の字）をのぞく。名簿の書き出しでよく付いてくる。
+  t = t.replace(/[\uFE00-\uFE0F\u200B-\u200D\u2060\uFEFF]|\uDB40[\uDD00-\uDDEF]/g, '');
   t = t.replace(/[\s　・･]/g, '');
   return Array.from ? Array.from(t).map(function (ch) { return NAME_VARIANTS_[ch] || ch; }).join('') : t;
 }
