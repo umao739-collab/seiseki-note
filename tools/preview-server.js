@@ -191,20 +191,13 @@
       validateShokenItems_(items, emails(c), terms).forEach(function (x) { shoken[x.studentEmail + '|' + x.term] = { text: x.text, at: '2026-11-15 10:00' }; });
       return { savedAt: '2026-11-15 10:00:00', count: items.length };
     },
-    saveGradeSubjects: function (grade, subjects, actingAs) {
-      var a = actor(actingAs);
-      if (!a.isSetup) err('この操作は、学校の設定担当の先生だけができます。');
-      gradeSubjects[grade] = validateGradeSubjects_(subjects);
-      return { subjects: gradeSubjects[grade] };
-    },
     getSchoolSetup: function (actingAs) {
       var a = actor(actingAs);
       if (!a.isSetup) err('この操作は、学校の設定担当の先生だけができます。');
       return { rosterLinked: true, rosterImportedAt: '2026-11-15 09:30:00', schoolName: school.schoolName, rosterSheetUrl: 'https://docs.google.com/spreadsheets/d/xxxxxxxxxxxxxxxxxxxx/edit',
         students: classes['3-1'].length + classes['3-2'].length,
         classes: Object.keys(classes).map(function (k) { return { classKey: k, label: classLabel_(k), count: classes[k].length, homeroom: k === '3-1' ? 'demo.t31@example.com' : '', assistants: [] }; }),
-        staff: [{ email: 'demo.setup@example.com', name: 'デモ 教務', title: '教務主任' }, { email: 'demo.t31@example.com', name: 'デモ 担任', title: '教諭' }, { email: 'demo.t32@example.com', name: 'デモ 二組', title: '教諭' }],
-        grades: [{ grade: 3, subjects: gradeSubjects[3] }] };
+        staff: [{ email: 'demo.setup@example.com', name: 'デモ 教務', title: '教務主任' }, { email: 'demo.t31@example.com', name: 'デモ 担任', title: '教諭' }, { email: 'demo.t32@example.com', name: 'デモ 二組', title: '教諭' }] };
     },
     importRoster: function (url, actingAs) {
       var a = actor(actingAs); if (!a.isSetup) err('この操作は、学校の設定担当の先生だけができます。');

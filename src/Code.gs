@@ -321,20 +321,6 @@ function saveShoken(classKey, items, actingAs) {
   });
 }
 
-/** 設定担当: 学年の教科・観点・基準を保存する。 */
-function saveGradeSubjects(grade, subjects, actingAs) {
-  return guard_(function () {
-    var ctx = getContext_(actingAs);
-    requireSetup_(ctx);
-    var g = checkInt_(grade, 1, 6, '学年');
-    var list = validateGradeSubjects_(subjects);
-    var fileId = currentFile_(ctx.actor);
-    Store.upsert(fileId, 'gradeSubjects', function (o) { return String(o.grade); },
-      [{ grade: String(g), subjects: JSON.stringify(list), updatedAt: now_(), updatedBy: ctx.me }]);
-    return { subjects: list };
-  });
-}
-
 // ================= 設定担当 =================
 
 /** 設定担当: 学校の設定の画面（名簿の取り込みの状況・クラスと担任・教職員・学年の教科）。 */
@@ -345,15 +331,13 @@ function getSchoolSetup(actingAs) {
     var sid = ctx.actor.schoolId;
     var rosterId = SchoolRoster.ensure(sid);
     SchoolRoster.syncEditors(rosterId, sid);
-    var fileId = currentFile_(ctx.actor);
+    currentFile_(ctx.actor);
     var byClass = {};
     Directory.listAssignments(sid).forEach(function (a) {
       var c = byClass[a.classKey] = byClass[a.classKey] || { homeroom: '', assistants: [] };
       if (a.role === ASSIGN_ROLE.homeroom) c.homeroom = normEmail_(a.email); else c.assistants.push(normEmail_(a.email));
     });
     var classes = Directory.listSchoolClasses(sid);
-    var grades = [];
-    classes.forEach(function (c) { var g = gradeOf_(c.classKey); if (grades.indexOf(g) === -1) grades.push(g); });
     var rrow = Directory.getSchoolRosterRow(sid) || {};
     return {
       schoolName: Directory.getSchool(sid).schoolName,
@@ -361,8 +345,7 @@ function getSchoolSetup(actingAs) {
       rosterLinked: !!rrow.sourceId, rosterImportedAt: rrow.importedAt || '',
       students: Directory.listStudents(sid).length,
       classes: classes.map(function (c) { var a = byClass[c.classKey] || { homeroom: '', assistants: [] }; return { classKey: c.classKey, label: classLabel_(c.classKey), count: c.count, homeroom: a.homeroom, assistants: a.assistants }; }),
-      staff: Directory.listStaff(sid),
-      grades: grades.map(function (g) { return { grade: g, subjects: gradeSubjects_(fileId, g) }; })
+      staff: Directory.listStaff(sid)
     };
   });
 }

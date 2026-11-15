@@ -13,7 +13,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.4.1';
+var APP_VERSION = '2.4.2';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -89,7 +89,7 @@ var SCHOOL_LIST = [
 var MASTER_STUDENT_COLS = { status: '状態', school: '学校', family: '姓', given: '名', email: 'Googleアカウント', grade: '年', classNo: '組', number: '番' };
 var MASTER_STAFF_COLS = { status: '状態', school: '学校', family: '姓', given: '名', email: 'Googleアカウント', title: '役職' };
 
-/** 教科・観点・基準の初期値（学校の設定。担任はクラスごとに変えられる）。 */
+/** 教科・観点・基準の初期値。評価の基準と評定の表は、担任がクラスごとに画面で決める。 */
 var KANTEN_KNOW = '知識・技能', KANTEN_THINK = '思考・判断・表現', KANTEN_ATTITUDE = '主体的に学習に取り組む態度';
 function defaultSubject_(name, opts) {
   opts = opts || {};
@@ -121,7 +121,7 @@ function defaultSubjectsForGrade_(grade) {
  */
 var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
   'saveCriteria', 'saveHyoteiRule', 'copyCriteriaToClasses',
-  'saveShoken', 'saveGradeSubjects', 'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
+  'saveShoken', 'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
 var ADMIN_FUNCTIONS = ['setup', 'startFiscalYear', 'closeFiscalYear'];
 var ENTRY_FUNCTIONS = ['doGet'];
 

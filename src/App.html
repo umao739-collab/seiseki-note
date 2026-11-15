@@ -192,7 +192,6 @@
     S.view = 'loading'; S.msg = '学校の設定をひらいています…'; render();
     call('getSchoolSetup').then(function (st) {
       S.setup = st; S.view = 'setup';
-      if (!S.setupGrade && st.grades.length) S.setupGrade = st.grades[0].grade;
       render();
     }).catch(function (e) { fail(e); S.view = 'home'; render(); });
   }
@@ -252,7 +251,7 @@
     }
     if (b.isSetup) {
       wrap.appendChild(h('div', { class: 'card soft row' }, h('span', { style: { fontSize: '28px' } }, '🔧'),
-        h('div', null, h('b', null, '学校の設定'), h('div', { class: 'muted' }, '名簿の取り込み・担任の割り当て・教科と観点・評価の基準')),
+        h('div', null, h('b', null, '学校の設定'), h('div', { class: 'muted' }, '名簿の取り込み・担任の割り当て')),
         h('span', { class: 'spacer' }), h('button', { class: 'btn sora', onclick: openSetup }, 'ひらく')));
     }
     return wrap;
@@ -928,38 +927,6 @@
       h('div', { class: 'row', style: { marginTop: '12px' } }, h('span', { class: 'spacer' }),
         h('button', { class: 'btn wakaba', onclick: function () { call('saveAssignments', assign).then(function () { toast('割り当てを保存しました'); }).catch(fail); } }, '💾 割り当てを保存'))));
 
-    var grades = st.grades;
-    var gsel = grades.filter(function (g) { return g.grade === S.setupGrade; })[0] || grades[0];
-    if (gsel) {
-      var subjects = JSON.parse(JSON.stringify(gsel.subjects));
-      var form = h('div', { class: 'grid2' }, subjects.map(function (sub) {
-        var kt = sub.kanten;
-        return h('div', { class: 'card' },
-          h('h3', { style: { margin: '0 0 6px' } }, sub.name),
-          h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, '観点'), h('th', null, 'GG'), h('th', null, 'A ○%以上'), h('th', null, 'C ○%未満'))),
-            h('tbody', null, kt.map(function (k) {
-              return h('tr', null, h('td', { class: kClass(k.label, k.gg) }, k.label + (k.into ? '（→' + short(k.into) + '）' : '') + (!k.test ? '（先生が入れる）' : '')),
-                h('td', null, k.gg || '—'),
-                h('td', null, k.test ? h('input', { class: 'text num', value: k.a, oninput: function (e) { k.a = e.target.value; } }) : ''),
-                h('td', null, k.test ? h('input', { class: 'text num', value: k.b, oninput: function (e) { k.b = e.target.value; } }) : ''));
-            }))),
-          h('div', { class: 'row small', style: { marginTop: '8px' } },
-            h('span', null, 'テストの評価 A ', h('input', { class: 'text num', value: sub.total.a, oninput: function (e) { sub.total.a = e.target.value; } }), '%以上・C ',
-              h('input', { class: 'text num', value: sub.total.b, oninput: function (e) { sub.total.b = e.target.value; } }), '%未満')),
-          h('div', { class: 'row small', style: { marginTop: '6px' } },
-            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sub.hyoteiTerm, onchange: function (e) { sub.hyoteiTerm = e.target.checked; } }), '通知表に評定を出す'),
-            h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sub.hyoteiYear, onchange: function (e) { sub.hyoteiYear = e.target.checked; } }), '要録に評定を出す')));
-      }));
-      wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash wakaba' }, '③ 教科・観点・評価の基準の初期値'), h('span', { class: 'sub' }, '学年ごとの最初の値です。担任の先生は、クラスごとに「点数を入れる」画面で変えられます')),
-        h('div', { class: 'pick', style: { marginBottom: '12px' } }, h('span', { class: 'q' }, '学年'), grades.map(function (g) {
-          return h('button', { class: 'pill' + (g.grade === gsel.grade ? ' on' : ''), onclick: function () { S.setupGrade = g.grade; render(); } }, g.grade + '年');
-        })),
-        form,
-        h('div', { class: 'row', style: { marginTop: '12px' } }, h('span', { class: 'spacer' }),
-          h('button', { class: 'btn wakaba', onclick: function () {
-            call('saveGradeSubjects', gsel.grade, subjects).then(function (r) { gsel.subjects = r.subjects; toast(gsel.grade + '年の設定を保存しました'); }).catch(fail);
-          } }, '💾 ' + gsel.grade + '年の設定を保存'))));
-    }
     return wrap;
   }
 
