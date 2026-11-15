@@ -284,7 +284,7 @@
 
   // ================= クラス =================
   var CLASS_TABS = [
-    ['tests', '📚', 'テストの登録', 't1'], ['scores', '✏️', '点数を入れる', 't2'], ['term', '🌸', '学期の成績', 't3'],
+    ['tests', '📚', 'テストの登録', 't1'], ['scores', '✏️', '点数を入れる', 't2'], ['counts', '📊', '人数の一覧', 't5'], ['term', '🌸', '学期の成績', 't3'],
     ['year', '📖', '要録（1年間）', 't4'], ['gg', '📋', 'GGに貼る', 't5'], ['check', '🔍', '入れわすれ', 't6']
   ];
   function viewClass() {
@@ -301,7 +301,7 @@
     })));
     var page = h('div', { class: 'page' });
     fixTerm(S.tab === 'gg' || S.tab === 'year');
-    var v = { tests: viewTests, scores: viewScores, term: viewTerm, year: viewYear, gg: viewGG, check: viewCheck }[S.tab] || viewScores;
+    var v = { tests: viewTests, scores: viewScores, counts: viewCounts, term: viewTerm, year: viewYear, gg: viewGG, check: viewCheck }[S.tab] || viewScores;
     page.appendChild(v());
     wrap.appendChild(page);
     return wrap;
@@ -477,6 +477,10 @@
     });
     return out;
   }
+  /** そのクラスに、この教科・学期で点数の入ったテストがあるか。 */
+  function peerHas(p, sub, term) {
+    return p.tests.some(function (t) { return t.subject === sub.name && t.term === term && t.rows.some(function (r) { return r; }); });
+  }
   function criteriaPanel(sub, term, onChange) {
     var cd = S.cd, key = sub.name + '|' + term;
     var crit = SL.criteriaFor(cd, sub, term);
@@ -487,7 +491,7 @@
       cd.criteria = cd.criteria || {};
       cd.criteria[key] = JSON.parse(JSON.stringify(crit));
       S.pending.criteria[key] = true;
-      draw(); onChange(); refreshSaveBar();
+      setTimeout(function () { draw(); onChange(); refreshSaveBar(); }, 0);
     }
     function numBox(obj, field, other, isA) {
       var inp = h('input', { class: 'text num', inputmode: 'numeric', value: obj[field], 'aria-label': isA ? 'A になる%' : 'C になる%',
@@ -507,7 +511,7 @@
     function draw() {
       clear(box);
       var mine = myCounts(cd, sub, term);
-      var peers = (cd.peers || []).map(function (p) { return { label: p.label.replace(/^\d+年/, ''), c: SL.peerCounts(p, sub, term, crit) }; });
+      var peers = (cd.peers || []).map(function (p) { return { label: p.label.replace(/^\d+年/, ''), c: peerHas(p, sub, term) ? SL.peerCounts(p, sub, term, crit) : null }; });
       var sumTests = function (tests) { var c = { A: 0, B: 0, C: 0 }; Object.keys(tests).forEach(function (n) { c.A += tests[n].A; c.B += tests[n].B; c.C += tests[n].C; }); return c; };
       box.appendChild(h('table', { class: 'crit-table' },
         h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'A になる'), h('th', null, 'C になる'), h('th', null, 'このクラス'),
@@ -519,7 +523,7 @@
             h('td', null, numBox(o, 'a', 'b', true), ' %以上'),
             h('td', null, numBox(o, 'b', 'a', false), ' %未満'),
             h('td', { class: 'me' }, countBar(mc || { A: 0, B: 0, C: 0 })),
-            peers.map(function (p) { return h('td', null, countBar((r.full ? p.c.kanten[r.full] : sumTests(p.c.tests)) || { A: 0, B: 0, C: 0 })); }));
+            peers.map(function (p) { return h('td', null, p.c ? countBar((r.full ? p.c.kanten[r.full] : sumTests(p.c.tests)) || { A: 0, B: 0, C: 0 }) : h('span', { class: 'muted small' }, 'まだ')); }));
         }))));
       var tests = SL.testsOf(cd, sub.name, term);
       if (tests.length) box.appendChild(h('div', { class: 'crit-tests' }, h('span', { class: 'muted small' }, 'テストごと（このクラス）'),
@@ -555,6 +559,93 @@
         return call('copyCriteriaToClasses', cd.classKey, subject, term, targets).then(function (r) { toast(r.copied.join('・') + ' に反映しました'); });
       });
     }).catch(fail);
+  }
+
+  // ---------- 人数の一覧（教科ごとに基準を決めて、全教科をならべて見る） ----------
+  function viewCounts() {
+    var cd = S.cd, term = S.term;
+    var bar = h('div', { class: 'toolbar' }, h('div', { class: 'pick' }, h('span', { class: 'q' }, 'いつ'), cd.terms.map(function (t) {
+      return h('button', { class: 'pill' + (S.term === t ? ' on' : ''), onclick: function () { leaveOk().then(function (ok) { if (ok) { S.term = t; render(); } }); } }, t);
+    })));
+    var holder = h('div');
+    var peersLabel = (cd.peers || []).map(function (p) { return p.label.replace(/^\d+年/, ''); });
+    var crits = {};
+    function step(sub, obj, field, other, isA, d, inputEl) {
+      var v = d === null ? Number(String(inputEl.value).replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); })) : obj[field] + d;
+      if (!isFinite(v) || Math.round(v) !== v || v < 0 || v > 100 || (isA ? v <= obj[other] : v >= obj[other])) {
+        if (d === null) { toast(isA ? 'A の % は、C の % より大きくしてください（1〜100）' : 'C の % は、A の % より小さくしてください', true); inputEl.value = obj[field]; }
+        return;
+      }
+      obj[field] = v;
+      var key = sub.name + '|' + term;
+      cd.criteria = cd.criteria || {};
+      cd.criteria[key] = JSON.parse(JSON.stringify(crits[sub.name]));
+      S.pending.criteria[key] = true;
+      // 入力欄にフォーカスがあるうちに描き直さない（ブラウザの blur・change と重ならないように）
+      setTimeout(function () { draw(); refreshSaveBar(); }, 0);
+    }
+    function stepper(sub, obj, field, other, isA) {
+      var inp = h('input', { class: 'text num', inputmode: 'numeric', value: obj[field], 'aria-label': sub.name + (isA ? ' A になる%' : ' C になる%'),
+        onchange: function (e) { step(sub, obj, field, other, isA, null, e.target); } });
+      return h('span', { class: 'stepper' }, h('button', { class: 'st', 'aria-label': '1 へらす', onclick: function () { step(sub, obj, field, other, isA, -1); } }, '−'), inp,
+        h('button', { class: 'st', 'aria-label': '1 ふやす', onclick: function () { step(sub, obj, field, other, isA, 1); } }, '＋'));
+    }
+    function sumTests(tests) { var c = { A: 0, B: 0, C: 0 }; Object.keys(tests).forEach(function (n) { c.A += tests[n].A; c.B += tests[n].B; c.C += tests[n].C; }); return c; }
+    function draw() {
+      clear(holder);
+      var body = [];
+      cd.subjects.forEach(function (sub) {
+        var hasTests = SL.testsOf(cd, sub.name, term).length > 0;
+        var crit = crits[sub.name] = SL.criteriaFor(cd, sub, term);
+        var rowsDef = SL.evalKanten(sub).filter(function (k) { return k.test; }).map(function (k) { return { label: short(k.label), full: k.label, cls: kClass(k.label, k.gg), obj: crit.kanten[k.label] }; });
+        rowsDef.push({ label: 'テストの評価', full: '', cls: '', obj: crit.unit });
+        if (!hasTests) {
+          body.push(h('tr', { class: 'sub-first none' }, h('th', { class: 'sname' }, sub.name), h('td', { colspan: 4 + peersLabel.length, class: 'muted small' }, 'この学期のテストはまだありません')));
+          return;
+        }
+        var mine = myCounts(cd, sub, term);
+        var peers = (cd.peers || []).map(function (p) { return peerHas(p, sub, term) ? SL.peerCounts(p, sub, term, crit) : null; });
+        rowsDef.forEach(function (r, i) {
+          body.push(h('tr', { class: i === 0 ? 'sub-first' : '' },
+            i === 0 ? h('th', { class: 'sname', rowspan: rowsDef.length }, h('button', { class: 'linkbtn', title: '点数を入れる画面へ', onclick: function () { S.subject = sub.name; S.tab = 'scores'; render(); } }, sub.name)) : null,
+            h('th', { class: r.cls }, r.label),
+            h('td', null, stepper(sub, r.obj, 'a', 'b', true), ' %以上'),
+            h('td', null, stepper(sub, r.obj, 'b', 'a', false), ' %未満'),
+            h('td', { class: 'me' }, countBar((r.full ? mine.kanten[r.full] : sumTests(mine.tests)) || { A: 0, B: 0, C: 0 })),
+            peers.map(function (pc) { return h('td', null, pc ? countBar((r.full ? pc.kanten[r.full] : sumTests(pc.tests)) || { A: 0, B: 0, C: 0 }) : h('span', { class: 'muted small' }, 'まだ')); })));
+        });
+      });
+      holder.appendChild(h('div', { class: 'card', style: { overflowX: 'auto' } },
+        h('table', { class: 'crit-table counts-table' },
+          h('thead', null, h('tr', null, h('th', null, '教科'), h('th', null, ''), h('th', null, 'A になる'), h('th', null, 'C になる'), h('th', null, 'このクラス'),
+            peersLabel.map(function (l) { return h('th', null, l); }))),
+          h('tbody', null, body))));
+    }
+    draw();
+    var copyBtn = cd.sameGrade.length ? h('button', { class: 'btn plain', onclick: function () {
+      var subs = cd.subjects.filter(function (sub) { return SL.testsOf(cd, sub.name, term).length; }).map(function (sub) { return sub.name; });
+      (pendingCount() ? saveAll() : Promise.resolve()).then(function () {
+        subs.forEach(function (n) { var key = n + '|' + term; if (!(cd.criteria || {})[key]) { cd.criteria = cd.criteria || {}; cd.criteria[key] = crits[n]; S.pending.criteria[key] = true; } });
+        return pendingCount() ? saveAll() : null;
+      }).then(function () {
+        var chosen = {};
+        var body = h('div', null, h('p', null, term + 'の評価の基準（' + subs.join('・') + '）を、ほかのクラスにも写します。'),
+          cd.sameGrade.map(function (c) { return h('div', null, h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: function (e) { chosen[c.classKey] = e.target.checked; } }), c.label)); }));
+        return ask('同じ学年にも反映', body, [['やめる', false, 'plain'], ['反映する', true, 'sora']]).then(function (ok) {
+          var targets = Object.keys(chosen).filter(function (k) { return chosen[k]; });
+          if (!ok || !targets.length) return;
+          return subs.reduce(function (p, n) { return p.then(function () { return call('copyCriteriaToClasses', cd.classKey, n, term, targets); }); }, Promise.resolve())
+            .then(function () { toast(subs.length + '教科の基準を反映しました'); });
+        });
+      }).catch(fail);
+    } }, '👯 この学期の基準を、同じ学年にも反映') : null;
+    return h('div', null, bar,
+      h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
+        '教科ごとに「A になる ○%以上」「C になる ○%未満」を決めると、その場で人数が変わります。観点の人数は学期の評価（テストを合わせた到達率）、「テストの評価」はテストごとの評価を合わせた数です。',
+        (cd.peers || []).length ? 'ほかのクラスは、名前なしの点数から数えています。' : '')),
+      holder,
+      h('div', { class: 'row', style: { marginTop: '10px' } }, h('span', { class: 'muted small' }, '教科の名前を押すと、その教科の「点数を入れる」画面へ行きます。'), h('span', { class: 'spacer' }), copyBtn),
+      saveBar());
   }
 
   // ---------- 評定の表（観点の組み合わせ） ----------
