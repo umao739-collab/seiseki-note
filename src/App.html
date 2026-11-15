@@ -53,30 +53,6 @@
       s('feDisplacementMap', { in: 'SourceGraphic', in2: 't', scale: scale || 7 }),
       s('feGaussianBlur', { stdDeviation: '0.4' }));
   }
-  /** 表紙の絵: 丘・小さな家・木・おひさま・雲。 */
-  function scene() {
-    var id = 'wc' + (++uid);
-    return s('svg', { class: 'scene', viewBox: '0 0 1200 150', preserveAspectRatio: 'xMidYMax slice', 'aria-hidden': 'true' },
-      s('defs', null, wcFilter(id, 9)),
-      s('g', { filter: 'url(#' + id + ')' },
-        s('circle', { cx: 1085, cy: 42, r: 26, fill: '#F9D8AE', opacity: .95 }),
-        s('ellipse', { cx: 760, cy: 34, rx: 46, ry: 14, fill: '#FFFFFF', opacity: .9 }),
-        s('ellipse', { cx: 795, cy: 26, rx: 30, ry: 14, fill: '#FFFFFF', opacity: .9 }),
-        s('ellipse', { cx: 520, cy: 52, rx: 38, ry: 11, fill: '#FFFFFF', opacity: .75 }),
-        s('path', { d: 'M0 128 C 180 92, 330 100, 470 120 S 760 92, 900 104 S 1110 88, 1200 100 L1200 150 L0 150 Z', fill: '#CDE5B7', opacity: .85 }),
-        s('path', { d: 'M0 140 C 220 118, 420 132, 640 128 S 980 112, 1200 132 L1200 150 L0 150 Z', fill: '#B5D69C', opacity: .8 }),
-        s('rect', { x: 948, y: 74, width: 44, height: 34, fill: '#F6C9C6' }),
-        s('path', { d: 'M940 78 L970 52 L1000 78 Z', fill: '#E28F8B' }),
-        s('rect', { x: 963, y: 88, width: 12, height: 20, fill: '#C9A27E' }),
-        s('rect', { x: 979, y: 82, width: 9, height: 9, fill: '#FFF6D8' }),
-        s('rect', { x: 1036, y: 76, width: 7, height: 30, fill: '#B48C6A' }),
-        s('circle', { cx: 1040, cy: 66, r: 22, fill: '#A9D18E', opacity: .95 }),
-        s('circle', { cx: 1056, cy: 76, r: 14, fill: '#9CC883', opacity: .9 }),
-        s('rect', { x: 846, y: 92, width: 5, height: 18, fill: '#B48C6A' }),
-        s('circle', { cx: 848, cy: 86, r: 12, fill: '#B9DBA0' }),
-        [[700, 132, '#F6C9C6'], [720, 136, '#F9D8AE'], [742, 131, '#DDD0EE'], [1120, 128, '#F6C9C6'], [1140, 134, '#F9D8AE'], [300, 136, '#DDD0EE'], [322, 132, '#F6C9C6']]
-          .map(function (f) { return s('circle', { cx: f[0], cy: f[1], r: 4, fill: f[2] }); })));
-  }
   /** 線を少しだけゆらす（手がきの感じ）。顔がくずれないように弱め。 */
   function softFilter(id) {
     return s('filter', { id: id, x: '-10%', y: '-10%', width: '120%', height: '120%' },
@@ -229,7 +205,7 @@
     var root = document.getElementById('app');
     clear(root);
     var who = S.boot ? (S.boot.schoolName ? S.boot.schoolName + '　' : '') + S.boot.name + (S.boot.role === 'admin' ? '' : ' 先生') : '';
-    root.appendChild(h('header', { class: 'cover' }, scene(),
+    root.appendChild(h('header', { class: 'cover' },
       h('div', { class: 'head' }, rabbit(72, 'happy'), h('div', null, h('h1', null, 'せいせきノート'), h('div', { class: 'sub' }, 'テストの点から、通知表・要録・GGまで'))),
       who ? h('div', { class: 'who' }, who) : null));
     if (S.isDemo) root.appendChild(h('div', { class: 'demo-bar' }, '🧸 デモ（名前も点数も作りものです）',
