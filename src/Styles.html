@@ -293,4 +293,20 @@
     .cover h1 { font-size: 30px; }
     .cover .who { position: relative; display: inline-block; top: auto; right: auto; bottom: auto; margin: 12px 0 0 16px; }
   }
+  thead th.k-gg { background: #E9F1E4; }
+  /* ============ 学期の成績：表の右の人数のまとめ ============ */
+  .term-layout { display: grid; grid-template-columns: minmax(0, max-content) minmax(240px, 300px); gap: 16px; align-items: start; }
+  .term-main { min-width: 0; }
+  .sum-card { position: sticky; top: 10px; padding: 14px 16px; }
+  .sum-title { margin: 0 0 8px; font-size: 18px; }
+  .sum-k { border-top: 2px dashed var(--line); padding: 8px 0 6px; }
+  .sum-kl { font-weight: 700; font-size: 14px; margin-bottom: 4px; padding-left: 6px; border-left: 5px solid var(--line-d); }
+  .sum-kl.k-know { border-left-color: #A9D2F0; } .sum-kl.k-think { border-left-color: #F4B8C1; } .sum-kl.k-hy { border-left-color: #D9C7F0; }
+  .sum-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+  .sum-n { font-size: 22px; font-weight: 900; font-variant-numeric: tabular-nums; min-width: 52px; }
+  .sum-n small { font-size: 12px; font-weight: 500; margin-left: 2px; }
+  .sum-d { font-weight: 900; border-radius: 999px; padding: 0 8px; font-size: 14px; }
+  .sum-d.up { background: rgba(63, 138, 77, .14); color: #2E6E3A; } .sum-d.down { background: rgba(192, 102, 26, .14); color: #9A4F12; }
+  .sum-hy { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 50%; background: #D9C7F0; }
+  @media (max-width: 900px) { .term-layout { grid-template-columns: 1fr; } .sum-card { position: static; } }
 </style>

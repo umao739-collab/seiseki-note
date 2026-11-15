@@ -13,7 +13,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.4.2';
+var APP_VERSION = '2.5.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -97,6 +97,7 @@ function defaultSubject_(name, opts) {
   var kanten = [{ label: KANTEN_KNOW, gg: '知', test: true, a: a, b: b }];
   (opts.sub || []).forEach(function (s) { kanten.push({ label: s, gg: '', test: true, into: KANTEN_KNOW, a: a, b: b }); });
   kanten.push({ label: KANTEN_THINK, gg: '思', test: true, a: a, b: b });
+  // GG の「教科等」の並び（知・思・主・評定）と同じ順にする。主体的はテストでは測れないので先生が入れる
   kanten.push({ label: KANTEN_ATTITUDE, gg: '主', test: false });
   return { name: name, kanten: kanten, total: { a: a, b: b, r3: 2.5, r2: 1.5 }, hyoteiTerm: false, hyoteiYear: !!opts.hyotei };
 }
