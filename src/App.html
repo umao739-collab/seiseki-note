@@ -234,7 +234,7 @@
     var b = S.boot;
     var wrap = h('div', { class: 'stack' });
     wrap.appendChild(h('div', { class: 'say' }, bird(52, '#F6C9C6'), h('div', { class: 'bubble' },
-      h('b', null, b.name + ' 先生、こんにちは。'), h('div', { class: 'muted' }, b.fiscalYear + '年度・' + b.termSystem + '　ひらくクラスの本をえらんでください。'))));
+      h('b', null, b.name + ' 先生、こんにちは。'), h('div', { class: 'muted' }, b.fiscalYear + '年度・' + b.termSystem + '　ひらくクラスをえらんでください。'))));
     if (!b.classes.length) {
       wrap.appendChild(h('div', { class: 'page empty' }, rabbit(90, 'wow'), h('span', { class: 'title' }, 'まだ担当のクラスがありません'),
         h('p', { class: 'muted' }, '学校の設定担当の先生に、担任・担当の割り当てをお願いしてください。')));
@@ -266,8 +266,8 @@
   function viewClass() {
     var cd = S.cd;
     var wrap = h('div', null);
-    wrap.appendChild(h('div', { class: 'row', style: { margin: '6px 0 6px' } },
-      h('button', { class: 'linkbtn', onclick: function () { leaveOk().then(function (ok) { if (ok) { S.view = 'home'; S.cd = null; render(); } }); } }, '← 本だなにもどる'),
+    wrap.appendChild(h('div', { class: 'row board-row', style: { margin: '6px 0 6px' } },
+      h('button', { class: 'linkbtn', onclick: function () { leaveOk().then(function (ok) { if (ok) { S.view = 'home'; S.cd = null; render(); } }); } }, '← メニューにもどる'),
       h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, cd.label), h('span', { class: 'muted' }, cd.students.length + '人・' + cd.termSystem)));
     wrap.appendChild(h('nav', { class: 'shelf' }, CLASS_TABS.map(function (t) {
       return h('button', { class: 'tab ' + t[3] + (S.tab === t[0] ? ' on' : ''), onclick: function () {
@@ -882,7 +882,7 @@
   function viewSetup() {
     var st = S.setup;
     var wrap = h('div', { class: 'stack' });
-    wrap.appendChild(h('div', { class: 'row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる'),
+    wrap.appendChild(h('div', { class: 'row board-row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← メニューにもどる'),
       h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, '学校の設定'), h('span', { class: 'muted' }, st.schoolName)));
     var urlIn = h('input', { class: 'text', type: 'url', style: { flex: '1', minWidth: '260px' }, placeholder: 'https://docs.google.com/spreadsheets/d/…（名簿マスターのリンク）', 'aria-label': '名簿マスターのリンク' });
     function doImport(url) {
@@ -971,7 +971,7 @@
     a.schools.forEach(function (x) { done[x.schoolId] = true; });
     function inp(key, ph, w) { return h('input', { class: 'text', placeholder: ph, style: { width: w || '180px' }, oninput: function (e) { f[key] = e.target.value; } }); }
     return h('div', { class: 'stack' },
-      S.boot && S.boot.role === 'teacher' ? h('div', null, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる')) : null,
+      S.boot && S.boot.role === 'teacher' ? h('div', { class: 'board-row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← メニューにもどる')) : null,
       h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash' }, '登録している学校'), h('span', { class: 'sub' }, a.fiscalYear + '年度')),
         a.schools.length ? h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, '学校'), h('th', null, '学期制'), h('th', null, '児童'), h('th', null, '設定担当'), h('th', null, '今年度データ'), h('th', null, ''))),
           h('tbody', null, a.schools.map(function (x) {

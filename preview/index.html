@@ -227,7 +227,7 @@
     --board: #2E4A3C; --board-d: #243B30; --chalk: #F3F0E6; --chalk-soft: rgba(243, 240, 230, .72);
     --c-pink: #F4B8C1; --c-yellow: #F7DE8A; --c-blue: #A9D2F0; --c-green: #B7DFA6; --c-orange: #F6C08E;
     --paper: #FBF8F0; --card: #FFFDF6; --ink: #3A3631; --ink-soft: #77706A; --line: #E4DCCB; --line-d: #C9BCA3;
-    --A: #4E9A5B; --B: #3F86C2; --C: #D9822F;
+    --A: #3F8A4D; --B: #2F76B4; --C: #C0661A;
     --wobble: 4px; --wobble2: 6px; --shadow: 0 3px 0 rgba(0, 0, 0, .18), 0 8px 18px rgba(0, 0, 0, .18);
   }
   body {
@@ -253,9 +253,10 @@
   .cover .who:before { content: ''; position: absolute; left: 50%; top: -6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #E2574C; box-shadow: inset -2px -2px 0 rgba(0,0,0,.2); }
 
   /* 黒板の上に出る文字（もどるリンク・クラス名など） */
-  #app > div > .row .linkbtn, #app > div > div > .row .linkbtn, .stack > .row .linkbtn { color: var(--c-yellow); text-decoration-color: rgba(247, 222, 138, .5); }
-  #app h2.title { color: var(--chalk); text-shadow: 0 0 1px rgba(255, 255, 255, .6); }
-  #app h2.title + .muted, .stack > .row .muted { color: var(--chalk-soft); }
+  /* 黒板の上に直接のっている行（紙のカードの中は除く）だけ、チョークの色にする */
+  .board-row .linkbtn { color: var(--c-yellow); text-decoration-color: rgba(247, 222, 138, .5); }
+  .board-row h2.title { color: var(--chalk); text-shadow: 0 0 1px rgba(255, 255, 255, .6); }
+  .board-row .muted { color: var(--chalk-soft); }
   .demo-bar { background: rgba(243, 240, 230, .08); border-color: rgba(243, 240, 230, .35); color: var(--chalk); }
   .demo-bar .linkbtn { color: var(--c-yellow); }
   .loading { color: var(--chalk); }
@@ -321,7 +322,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.4.0';
+var APP_VERSION = '2.4.1';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -1937,7 +1938,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     var b = S.boot;
     var wrap = h('div', { class: 'stack' });
     wrap.appendChild(h('div', { class: 'say' }, bird(52, '#F6C9C6'), h('div', { class: 'bubble' },
-      h('b', null, b.name + ' 先生、こんにちは。'), h('div', { class: 'muted' }, b.fiscalYear + '年度・' + b.termSystem + '　ひらくクラスの本をえらんでください。'))));
+      h('b', null, b.name + ' 先生、こんにちは。'), h('div', { class: 'muted' }, b.fiscalYear + '年度・' + b.termSystem + '　ひらくクラスをえらんでください。'))));
     if (!b.classes.length) {
       wrap.appendChild(h('div', { class: 'page empty' }, rabbit(90, 'wow'), h('span', { class: 'title' }, 'まだ担当のクラスがありません'),
         h('p', { class: 'muted' }, '学校の設定担当の先生に、担任・担当の割り当てをお願いしてください。')));
@@ -1969,8 +1970,8 @@ function validateHyoteiRule_(rule, subjectConf) {
   function viewClass() {
     var cd = S.cd;
     var wrap = h('div', null);
-    wrap.appendChild(h('div', { class: 'row', style: { margin: '6px 0 6px' } },
-      h('button', { class: 'linkbtn', onclick: function () { leaveOk().then(function (ok) { if (ok) { S.view = 'home'; S.cd = null; render(); } }); } }, '← 本だなにもどる'),
+    wrap.appendChild(h('div', { class: 'row board-row', style: { margin: '6px 0 6px' } },
+      h('button', { class: 'linkbtn', onclick: function () { leaveOk().then(function (ok) { if (ok) { S.view = 'home'; S.cd = null; render(); } }); } }, '← メニューにもどる'),
       h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, cd.label), h('span', { class: 'muted' }, cd.students.length + '人・' + cd.termSystem)));
     wrap.appendChild(h('nav', { class: 'shelf' }, CLASS_TABS.map(function (t) {
       return h('button', { class: 'tab ' + t[3] + (S.tab === t[0] ? ' on' : ''), onclick: function () {
@@ -2585,7 +2586,7 @@ function validateHyoteiRule_(rule, subjectConf) {
   function viewSetup() {
     var st = S.setup;
     var wrap = h('div', { class: 'stack' });
-    wrap.appendChild(h('div', { class: 'row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる'),
+    wrap.appendChild(h('div', { class: 'row board-row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← メニューにもどる'),
       h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, '学校の設定'), h('span', { class: 'muted' }, st.schoolName)));
     var urlIn = h('input', { class: 'text', type: 'url', style: { flex: '1', minWidth: '260px' }, placeholder: 'https://docs.google.com/spreadsheets/d/…（名簿マスターのリンク）', 'aria-label': '名簿マスターのリンク' });
     function doImport(url) {
@@ -2674,7 +2675,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     a.schools.forEach(function (x) { done[x.schoolId] = true; });
     function inp(key, ph, w) { return h('input', { class: 'text', placeholder: ph, style: { width: w || '180px' }, oninput: function (e) { f[key] = e.target.value; } }); }
     return h('div', { class: 'stack' },
-      S.boot && S.boot.role === 'teacher' ? h('div', null, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる')) : null,
+      S.boot && S.boot.role === 'teacher' ? h('div', { class: 'board-row' }, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← メニューにもどる')) : null,
       h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash' }, '登録している学校'), h('span', { class: 'sub' }, a.fiscalYear + '年度')),
         a.schools.length ? h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, '学校'), h('th', null, '学期制'), h('th', null, '児童'), h('th', null, '設定担当'), h('th', null, '今年度データ'), h('th', null, ''))),
           h('tbody', null, a.schools.map(function (x) {

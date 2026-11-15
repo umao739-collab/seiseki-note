@@ -220,7 +220,7 @@
     --board: #2E4A3C; --board-d: #243B30; --chalk: #F3F0E6; --chalk-soft: rgba(243, 240, 230, .72);
     --c-pink: #F4B8C1; --c-yellow: #F7DE8A; --c-blue: #A9D2F0; --c-green: #B7DFA6; --c-orange: #F6C08E;
     --paper: #FBF8F0; --card: #FFFDF6; --ink: #3A3631; --ink-soft: #77706A; --line: #E4DCCB; --line-d: #C9BCA3;
-    --A: #4E9A5B; --B: #3F86C2; --C: #D9822F;
+    --A: #3F8A4D; --B: #2F76B4; --C: #C0661A;
     --wobble: 4px; --wobble2: 6px; --shadow: 0 3px 0 rgba(0, 0, 0, .18), 0 8px 18px rgba(0, 0, 0, .18);
   }
   body {
@@ -246,9 +246,10 @@
   .cover .who:before { content: ''; position: absolute; left: 50%; top: -6px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: #E2574C; box-shadow: inset -2px -2px 0 rgba(0,0,0,.2); }
 
   /* 黒板の上に出る文字（もどるリンク・クラス名など） */
-  #app > div > .row .linkbtn, #app > div > div > .row .linkbtn, .stack > .row .linkbtn { color: var(--c-yellow); text-decoration-color: rgba(247, 222, 138, .5); }
-  #app h2.title { color: var(--chalk); text-shadow: 0 0 1px rgba(255, 255, 255, .6); }
-  #app h2.title + .muted, .stack > .row .muted { color: var(--chalk-soft); }
+  /* 黒板の上に直接のっている行（紙のカードの中は除く）だけ、チョークの色にする */
+  .board-row .linkbtn { color: var(--c-yellow); text-decoration-color: rgba(247, 222, 138, .5); }
+  .board-row h2.title { color: var(--chalk); text-shadow: 0 0 1px rgba(255, 255, 255, .6); }
+  .board-row .muted { color: var(--chalk-soft); }
   .demo-bar { background: rgba(243, 240, 230, .08); border-color: rgba(243, 240, 230, .35); color: var(--chalk); }
   .demo-bar .linkbtn { color: var(--c-yellow); }
   .loading { color: var(--chalk); }
