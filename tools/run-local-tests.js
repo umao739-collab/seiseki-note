@@ -371,5 +371,20 @@ run('P04 SMILE 取りこみ: 異体字（原と𠩤）・1字だけちがう子�
   eq(p2.students.fuzzy.map((x) => x.rosterNo), [2], '1字ちがいは合わせて知らせる');
 });
 
+run('G02 GG に全教科をまとめて貼る: 教科ごとに 知・思・主・評定 の4列、GG の並び', () => {
+  const cd = cdOf();
+  cd.subjects = JSON.parse(JSON.stringify(ctx.defaultSubjectsForGrade_(6))).reverse();
+  const t = SL.ggAll(cd, cd.terms[0]);
+  eq(t.subjects, ['国語', '社会', '算数', '理科', '音楽', '図画工作', '家庭', '体育', '外国語']);
+  eq(t.header.slice(0, 4), ['国語_知', '国語_思', '国語_主', '国語_評定']);
+  ok(t.header.length === t.subjects.length * 4, '4列ずつでない');
+  ok(t.subjects.indexOf('図画工作') !== -1, '図工が図画工作になっていない');
+  ok(t.subjects.indexOf('社会') === 1 && t.subjects.indexOf('算数') === 2, 'GG の並びでない: ' + t.subjects.join(','));
+  ok(t.rows.length === cd.students.length);
+  ok(t.rows.every((r) => r.cells.length === t.header.length && r.cells[3] === ''), '学期の評定が空でない');
+  const y = SL.ggAll(cd, '1年間');
+  ok(y.rows.every((r) => r.cells.length === y.header.length));
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);

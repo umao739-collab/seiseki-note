@@ -267,6 +267,37 @@
     });
   };
 
+  /** GG での教科の並び（GG の見出しの順）。図工は GG では「図画工作」。 */
+  SL.GG_SUBJECT_ORDER = ['国語', '社会', '算数', '理科', '生活', '音楽', '図工', '家庭', '体育', '外国語'];
+  SL.ggSubjectName = function (name) { return name === '図工' ? '図画工作' : name; };
+  /**
+   * 全教科をまとめて GG に貼る行。教科ごとに いつも「知・思・主・評定」の4列（評定を出さない時期は空）にして、
+   * GG の見出し（国語_知 国語_思 国語_主 国語_評定 社会_知 …）と列がずれないようにする。
+   */
+  SL.ggAll = function (cd, term) {
+    var subs = cd.subjects.slice().sort(function (a, b) {
+      var ia = SL.GG_SUBJECT_ORDER.indexOf(a.name), ib = SL.GG_SUBJECT_ORDER.indexOf(b.name);
+      return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+    });
+    var header = [];
+    subs.forEach(function (sub) { ['知', '思', '主', '評定'].forEach(function (g) { header.push(SL.ggSubjectName(sub.name) + '_' + g); }); });
+    var rows = cd.students.map(function (st) {
+      var cells = [];
+      subs.forEach(function (sub) {
+        var ev = SL.evalFor(cd, sub, st.key, term);
+        var useHyotei = term === YEAR ? sub.hyoteiYear : sub.hyoteiTerm;
+        ['知', '思', '主'].forEach(function (g) {
+          var k = evalKanten(sub).filter(function (x) { return x.gg === g; })[0];
+          var e = k ? ev.kanten.filter(function (x) { return x.label === k.label; })[0] : null;
+          cells.push(e ? e.final : '');
+        });
+        cells.push(useHyotei ? ev.hyotei.final : '');
+      });
+      return { key: st.key, no: st.no, name: st.name, cells: cells };
+    });
+    return { subjects: subs.map(function (x) { return SL.ggSubjectName(x.name); }), header: header, rows: rows };
+  };
+
   /** 表の値をタブ区切りの文字にする（スプレッドシート・GGに貼れる形）。 */
   SL.toTsv = function (rows) {
     return rows.map(function (r) { return r.map(function (v) { return String(v === null || v === undefined ? '' : v).replace(/[\t\r\n]+/g, ' '); }).join('\t'); }).join('\n');

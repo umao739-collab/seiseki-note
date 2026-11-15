@@ -829,7 +829,14 @@
         copyText(SL.toTsv(data.map(function (r) { return r.cells; })), 'GG用にコピーしました（' + data.length + '人）' + (empty ? '　空いているマスが ' + empty + 'か所あります' : ''));
       } }, '📋 GG用にコピー'),
       h('span', { class: 'small' }, 'GG の「教科等」で ' + (term === YEAR ? '' : term + '・') + sub.name + ' をえらび、いちばん上の子の「知」のマスをクリックして Ctrl+V →「保存」。',
-        h('br'), h('span', { class: 'muted' }, '名前は入りません。‐（評価できない）は GG の「/」で入ります。')));
+        h('br'), h('span', { class: 'muted' }, '名前は入りません。‐（評価できない）は GG の「/」で入ります。')),
+      h('div', { class: 'ggall' },
+        h('button', { class: 'btn big sora', onclick: function () {
+          var all = SL.ggAll(cd, term);
+          copyText(SL.toTsv(all.rows.map(function (r) { return r.cells; })), '全教科をまとめてコピーしました（' + all.rows.length + '人・' + all.subjects.length + '教科）');
+        } }, '📋 全教科をまとめてコピー'),
+        h('span', { class: 'small' }, (term === YEAR ? 'GG の指導要録「学年ごと」' : 'GG の' + term + 'の成績') + 'で、いちばん上の子の「国語_知」のマスをクリックして Ctrl+V →「保存」。',
+          h('br'), h('span', { class: 'muted' }, '並び：' + SL.ggAll(cd, term).subjects.join('→') + '（教科ごとに 知・思・主・評定）。' + (term === YEAR ? '' : '学期の評定は空のまま貼ります。')))));
   }
   function copyText(text, done) {
     function fallback() {
