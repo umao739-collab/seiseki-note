@@ -19,12 +19,17 @@ function getMe_(actingAs) {
   return e;
 }
 
+/**
+ * 本人・役割・学校を決める。
+ * アプリ管理者が先生でもあるときは、先生として動き（担当クラスだけ）、isAdmin で管理の関数も使える。
+ */
 function getContext_(actingAs) {
   var me = getMe_(actingAs);
-  if (isAppAdmin_(me)) return { me: me, actor: { role: 'admin', email: me, name: 'アプリ管理者', schoolId: '', classes: [] } };
+  var isAdmin = isAppAdmin_(me);
   var actor = Directory.resolveActor(me);
+  if (!actor && isAdmin) actor = { role: 'admin', email: me, name: 'アプリ管理者', schoolId: '', classes: [] };
   if (!actor) throw appError_(DENY_MESSAGE_);
-  return { me: me, actor: actor };
+  return { me: me, actor: actor, isAdmin: isAdmin };
 }
 
 function requireTeacher_(ctx) {
@@ -35,7 +40,7 @@ function requireSetup_(ctx) {
   if (!ctx.actor.isSetup) throw appError_('この操作は、学校の設定担当の先生だけができます。');
 }
 function requireAdmin_(ctx) {
-  if (ctx.actor.role !== 'admin') throw appError_('この操作は、アプリ管理者だけができます。');
+  if (!ctx.isAdmin) throw appError_('この操作は、アプリ管理者だけができます。');
 }
 /** そのクラスの担当か。担当でなければ断る。正しいクラスの書き方を返す。 */
 function requireClass_(ctx, classKey) {

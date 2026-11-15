@@ -267,6 +267,11 @@
             h('div', { class: 'bl' }, c.label), h('div', { class: 'bs' }, c.count + '人'), bird(46, ['#F6C9C6', '#C7E0F3', '#CDE5B7', '#DDD0EE', '#F9D8AE', '#F7EBD3'][i % 6]));
         }))));
     }
+    if (b.isAdmin) {
+      wrap.appendChild(h('div', { class: 'card soft row' }, h('span', { style: { fontSize: '28px' } }, '🏫'),
+        h('div', null, h('b', null, 'アプリ管理'), h('div', { class: 'muted' }, '学校の登録・利用中／休止')),
+        h('span', { class: 'spacer' }), h('button', { class: 'btn fuji', onclick: function () { S.view = 'loading'; S.msg = 'ひらいています…'; render(); openAdmin(); } }, 'ひらく')));
+    }
     if (b.isSetup) {
       wrap.appendChild(h('div', { class: 'card soft row' }, h('span', { style: { fontSize: '28px' } }, '🔧'),
         h('div', null, h('b', null, '学校の設定'), h('div', { class: 'muted' }, '名簿の取り込み・担任の割り当て・教科と観点・評価の基準')),
@@ -725,6 +730,7 @@
     var f = { schoolId: '', schoolName: '', termSystem: '3学期制', email: '', teacherName: '' };
     function inp(key, ph, w) { return h('input', { class: 'text', placeholder: ph, style: { width: w || '180px' }, oninput: function (e) { f[key] = e.target.value; } }); }
     return h('div', { class: 'stack' },
+      S.boot && S.boot.role === 'teacher' ? h('div', null, h('button', { class: 'linkbtn', onclick: function () { S.view = 'home'; render(); } }, '← 本だなにもどる')) : null,
       h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash' }, '登録している学校'), h('span', { class: 'sub' }, a.fiscalYear + '年度')),
         a.schools.length ? h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, '学校'), h('th', null, '学期制'), h('th', null, '児童'), h('th', null, '設定担当'), h('th', null, '今年度データ'), h('th', null, ''))),
           h('tbody', null, a.schools.map(function (x) {

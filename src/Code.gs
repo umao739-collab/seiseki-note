@@ -65,7 +65,7 @@ function bootstrap(actingAs) {
   return guard_(function () {
     var ctx = getContext_(actingAs);
     var a = ctx.actor;
-    var base = { role: a.role, name: a.name, version: APP_VERSION, isDemo: isDemoMode_() };
+    var base = { role: a.role, name: a.name, version: APP_VERSION, isDemo: isDemoMode_(), isAdmin: !!ctx.isAdmin };
     if (a.role === 'admin') return base;
     var school = Directory.getSchool(a.schoolId);
     var counts = {};
