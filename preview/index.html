@@ -418,7 +418,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.9.5';
+var APP_VERSION = '2.9.6';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -2684,7 +2684,6 @@ function validateHyoteiRule_(rule, subjectConf) {
     var crit = SL.criteriaFor(cd, sub, term);
     var box = h('div', { class: 'crit' });
     var rowsDef = SL.evalKanten(sub).filter(function (k) { return k.test; }).map(function (k) { return { label: short(k.label), full: k.label, cls: kClass(k.label, k.gg), get: function () { return crit.kanten[k.label]; } }; });
-    rowsDef.push({ label: 'テストの評価', full: '', cls: '', get: function () { return crit.unit; } });
     function commit() {
       cd.criteria = cd.criteria || {};
       cd.criteria[key] = JSON.parse(JSON.stringify(crit));
@@ -2710,22 +2709,18 @@ function validateHyoteiRule_(rule, subjectConf) {
       clear(box);
       var mine = myCounts(cd, sub, term);
       var peers = (cd.peers || []).map(function (p) { return { label: p.label.replace(/^\d+年/, ''), c: peerHas(p, sub, term) ? SL.peerCounts(p, sub, term, crit) : null }; });
-      var sumTests = function (tests) { var c = { A: 0, B: 0, C: 0 }; Object.keys(tests).forEach(function (n) { c.A += tests[n].A; c.B += tests[n].B; c.C += tests[n].C; }); return c; };
       box.appendChild(h('table', { class: 'crit-table' },
         h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'A になる'), h('th', null, 'C になる'), h('th', null, 'このクラス'),
           peers.map(function (p) { return h('th', null, p.label); }))),
         h('tbody', null, rowsDef.map(function (r) {
           var o = r.get();
-          var mc = r.full ? mine.kanten[r.full] : sumTests(mine.tests);
+          var mc = mine.kanten[r.full];
           return h('tr', null, h('th', { class: r.cls }, r.label),
             h('td', null, numBox(o, 'a', 'b', true), ' %以上'),
             h('td', null, numBox(o, 'b', 'a', false), ' %未満'),
             h('td', { class: 'me' }, countBar(mc || { A: 0, B: 0, C: 0 })),
-            peers.map(function (p) { return h('td', null, p.c ? countBar((r.full ? p.c.kanten[r.full] : sumTests(p.c.tests)) || { A: 0, B: 0, C: 0 }) : h('span', { class: 'muted small' }, 'まだ')); }));
+            peers.map(function (p) { return h('td', null, p.c ? countBar(p.c.kanten[r.full] || { A: 0, B: 0, C: 0 }) : h('span', { class: 'muted small' }, 'まだ')); }));
         }))));
-      var tests = SL.testsOf(cd, sub.name, term);
-      if (tests.length) box.appendChild(h('div', { class: 'crit-tests' }, h('span', { class: 'muted small' }, 'テストごと（このクラス）'),
-        tests.map(function (t, i) { return h('span', { class: 'tchip' }, h('span', { class: 'tn' }, (i + 1) + '. ' + t.name), countBar(mine.tests[t.name] || { A: 0, B: 0, C: 0 })); })));
       box.appendChild(h('div', { class: 'row small', style: { marginTop: '8px' } },
         h('span', { class: 'muted' }, 'B は、その間です。数字を変えると、表の評価と人数がすぐ変わります（「保存する」で決まります）。',
           cd.peers && cd.peers.length ? 'ほかのクラスは、名前なしの点数から数えています。' : ''),
@@ -2810,7 +2805,6 @@ function validateHyoteiRule_(rule, subjectConf) {
           cls: kClass(l) + (li === 0 ? ' gsep' : ''), editable: function () { return true; } });
       });
       cols.push({ kind: 'rate', test: t, label: '%', group: (ti + 1) + '. ' + t.name, title: '到達率' });
-      cols.push({ kind: 'eval', test: t, label: '評価', group: (ti + 1) + '. ' + t.name });
     });
     var rows = cd.students.map(function (st) { return { no: st.no, name: st.name, key: st.key }; });
     var grid = Grid.create({
@@ -2825,8 +2819,7 @@ function validateHyoteiRule_(rule, subjectConf) {
         var col = cols[c];
         if (col.kind === 'score') return null;
         var res = SL.testResult(cd, sub, col.test, rows[r].key);
-        if (col.kind === 'rate') return { text: res ? pct(res.rate) : '' };
-        return { text: res ? res.eval : '', cls: res ? 'v' + res.eval : '' };
+        return { text: res ? pct(res.rate) : '' };
       },
       normalize: function (r, c, input) { return SL.normScore(input, cols[c].test.points[cols[c].kanten]); },
       onChange: function (changes) {
@@ -3098,7 +3091,7 @@ function validateHyoteiRule_(rule, subjectConf) {
             h('span', { class: 'krate' }, pct(sm.rate), h('small', null, '%'))),
           sm.kanten.map(function (k) { return kbar(SL.shortLabel(k.label), k.rate, k.classRate, K.avg); }),
           h('div', { class: 'kunits' }, shown.map(function (u) {
-            return h('div', null, evBadge(u.eval, true), h('span', { class: 'ku', title: u.name }, (p.term === YEAR ? u.term.charAt(0) + '・' : '') + u.name),
+            return h('div', null, h('span', { class: 'ku', title: u.name }, (p.term === YEAR ? u.term.charAt(0) + '・' : '') + u.name),
               u.tag === 'good' ? h('span', { class: 'ktag good' }, '★') : u.tag === 'grow' ? h('span', { class: 'ktag grow' }, '🌱') : u.tag === 'missing' ? h('span', { class: 'ktag miss' }, '未') : null,
               h('span', { class: 'kur' }, u.rate === null ? '' : pct(u.rate) + '%'));
           }), sm.units.length > shown.length ? h('div', { class: 'muted small' }, '…ほか ' + (sm.units.length - shown.length) + '単元') : null));
