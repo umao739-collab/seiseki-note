@@ -139,7 +139,9 @@ function parseSubject_(name, values, nStudents) {
 /** 時期の並び（1学期→2学期→3学期／前期→後期）。 */
 
 /** 名前の空白をのぞいてくらべる。 */
-var NAME_VARIANTS_ = { '髙': '高', '﨑': '崎', '嵜': '崎', '𠮷': '吉', '德': '徳', '濵': '浜', '濱': '浜', '邊': '辺', '邉': '辺', '齋': '斉', '齊': '斉', '斎': '斉', '櫻': '桜', '澤': '沢', '廣': '広', '國': '国', '龍': '竜', '眞': '真', '瀨': '瀬', '惠': '恵', '槇': '槙', '冨': '富', '條': '条', '藪': '薮', '﨔': '欅' };
+var NAME_VARIANTS_ = {
+  '髙': '高', '﨑': '崎', '嵜': '崎', '𥔎': '崎', '𠮷': '吉', '德': '徳', '濵': '浜', '濱': '浜', '邊': '辺', '邉': '辺', '𨛗': '辺', '齋': '斉', '齊': '斉', '斎': '斉', '櫻': '桜', '澤': '沢', '廣': '広', '國': '国', '龍': '竜', '眞': '真', '瀨': '瀬', '惠': '恵', '槇': '槙', '冨': '富', '條': '条', '藪': '薮', '𠩤': '原', '𣘺': '橋', '槗': '橋', '嶋': '島', '嶌': '島', '栁': '柳', '𡈽': '土', '峯': '峰', '曻': '昇', '舘': '館', '淺': '浅', '實': '実', '學': '学', '藏': '蔵', '壽': '寿', '彌': '弥', '龜': '亀', '豐': '豊', '禮': '礼', '榮': '栄', '圓': '円', '團': '団', '萬': '万', '滿': '満', '與': '与', '傳': '伝', '來': '来', '莊': '荘', '驒': '騨', '瀧': '滝', '鷗': '鴎', '靜': '静', '曾': '曽', '黑': '黒', '綠': '緑', '穗': '穂', '譽': '誉', '衞': '衛', '戶': '戸', '淸': '清', '靑': '青', '桒': '桑', '鄕': '郷', '凜': '凛', '𦚰': '脇', '渕': '淵', '渊': '淵', '籐': '藤', '巖': '巌', '嵓': '巌', '乘': '乗', '剱': '剣', '劍': '剣', '劒': '剣', '對': '対', '譯': '訳', '聰': '聡', '總': '総', '縣': '県', '髮': '髪', '顯': '顕', '檜': '桧', '驛': '駅', '餘': '余'
+};
 function bareName_(s) {
   var t = String(s || '');
   if (t.normalize) t = t.normalize('NFKC');
@@ -181,6 +183,26 @@ function smilePlan_(menu, parsed, classKey, roster, subjects, terms) {
     matched++;
   });
   // 名前で合わなかった子：同じ番号の名簿の子もまだ合っていなければ「名前が合わない」、それ以外は「名簿にいない」（転校など）。
+  // 1字だけちがう名簿の子がちょうど1人なら、同じ子とみなす（めずらしい異体字のため）。確かめ画面に出す。
+  var fuzzy = [];
+  left = left.filter(function (st) {
+    var a = Array.from(bareName_(st.name));
+    var hits = roster.filter(function (x) {
+      if (used[x.email]) return false;
+      var b = Array.from(bareName_(x.name));
+      if (b.length !== a.length || a.length < 3) return false;
+      var diff = 0;
+      for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) diff++;
+      return diff === 1;
+    });
+    if (hits.length !== 1) return true;
+    var r = hits[0];
+    used[r.email] = true;
+    fuzzy.push({ no: st.no, smileName: st.name, rosterName: r.name, rosterNo: r.number });
+    map[st.idx] = r.email;
+    matched++;
+    return false;
+  });
   left.forEach(function (st) {
     var same = roster.filter(function (x) { return Number(x.number) === Number(st.no) && !used[x.email]; })[0];
     if (same) mismatch.push({ no: st.no, smileName: st.name, rosterName: same.name });
@@ -225,7 +247,7 @@ function smilePlan_(menu, parsed, classKey, roster, subjects, terms) {
   });
   return {
     label: classLabel_(key), tests: tests, thresholds: thresholds,
-    students: { smile: menu.students.length, matched: matched, mismatch: mismatch, missing: missing, moved: moved },
+    students: { smile: menu.students.length, matched: matched, mismatch: mismatch, missing: missing, moved: moved, fuzzy: fuzzy },
     skipped: skipped
   };
 }

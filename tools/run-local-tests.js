@@ -355,5 +355,21 @@ run('P03 SMILE 取りこみ: 見えない字（異体字セレクタ・ゼロ幅
   eq(ctx.bareName_('葛\uFE00西\u200B たろう'), ctx.bareName_('葛西たろう'));
 });
 
+run('P04 SMILE 取りこみ: 異体字（原と𠩤）・1字だけちがう子は合わせて知らせる', () => {
+  eq(ctx.bareName_('小𠩤 たろう'), ctx.bareName_('小原　たろう'));
+  const mrows = []; for (let i = 0; i < 60; i++) mrows.push(Array(11).fill(''));
+  mrows[0][5] = '3年'; mrows[0][7] = '1'; mrows[13][1] = '№'; mrows[13][2] = '名前';
+  [['1', '小原 たろう'], ['2', '山田 はなこ'], ['3', '鈴木 いち']].forEach((x, i) => { mrows[14 + i][1] = x[0]; mrows[14 + i][2] = x[1]; });
+  const menu = ctx.parseMenu_(mrows);
+  const roster = [{ email: 'a@x', number: 1, name: '小𠩤 たろう' }, { email: 'b@x', number: 2, name: '山⽥ はなこ' }, { email: 'c@x', number: 3, name: '佐藤 じろう' }];
+  const plan = ctx.smilePlan_(menu, [], '3-1', roster, g3, ['1学期']);
+  eq(plan.students.matched, 2);
+  eq(plan.students.fuzzy, []);
+  eq(plan.students.mismatch.map((x) => x.no), [3], 'まるでちがう名前は合わせない');
+  const roster2 = [{ email: 'b@x', number: 2, name: '山囲 はなこ' }];
+  const p2 = ctx.smilePlan_(menu, [], '3-1', roster2, g3, ['1学期']);
+  eq(p2.students.fuzzy.map((x) => x.rosterNo), [2], '1字ちがいは合わせて知らせる');
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);
