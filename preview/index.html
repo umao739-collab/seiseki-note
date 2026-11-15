@@ -418,7 +418,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.9.6';
+var APP_VERSION = '2.10.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -3011,13 +3011,13 @@ function validateHyoteiRule_(rule, subjectConf) {
   var SUBJECT_COLOR = { '国語': '#D9667F', '社会': '#D9822F', '算数': '#2F76B4', '理科': '#3F8A4D', '生活': '#7FA640',
     '音楽': '#8C6BC2', '図工': '#C99A1E', '家庭': '#C47452', '体育': '#2E9AA8', '外国語': '#5E6FC2' };
   function colorOf(name) { return SUBJECT_COLOR[name] || '#8C7663'; }
-  var K = { avg: true, shoken: true, length: 'normal', drafts: {}, seeds: {} };
+  var K = { avg: true, shoken: true, length: 'normal', radar: 'subject', drafts: {}, seeds: {} };
 
   /** レーダーチャート（教科ごとの到達率。点線は学級平均）。 */
   function radar(p, showAvg) {
     var subs = p.subjects.filter(function (x) { return x.rate !== null; });
-    // 教科が2つ以下のときは、教科×観点（国語・知、国語・思 …）を軸にする
-    if (subs.length < 3) {
+    // 「観点ごと」を選んだとき・教科が2つ以下のときは、教科×観点（国語・知、国語・思 …）を軸にする
+    if (K.radar === 'kanten' || subs.length < 3) {
       subs = [];
       p.subjects.forEach(function (sm) {
         sm.kanten.forEach(function (k) { if (k.rate !== null) subs.push({ name: sm.name, label: sm.name + '・' + SL.shortLabel(k.label).charAt(0), rate: k.rate, classRate: k.classRate }); });
@@ -3039,7 +3039,7 @@ function validateHyoteiRule_(rule, subjectConf) {
       var c = Math.cos(ang(i)), sn = Math.sin(ang(i));
       var e = [cx + (R + 12) * c, cy + (R + 12) * sn + (sn > 0.3 ? 12 : sn < -0.3 ? -2 : 5)];
       var anchor = c > 0.3 ? 'start' : c < -0.3 ? 'end' : 'middle';
-      return s('text', { x: e[0], y: e[1], 'text-anchor': anchor, 'font-size': x.label ? 12 : 14, 'font-weight': 700, fill: colorOf(x.name) }, x.label || x.name);
+      return s('text', { x: e[0], y: e[1], 'text-anchor': anchor, 'font-size': x.label ? (n > 10 ? 11 : 12) : 14, 'font-weight': 700, fill: colorOf(x.name) }, x.label || x.name);
     });
     var vals = subs.map(function (x, i) { var e = pt(i, x.rate); return s('circle', { cx: e[0], cy: e[1], r: 3.5, fill: '#2F76B4' }); });
     return h('div', { class: 'radar' },
@@ -3135,6 +3135,11 @@ function validateHyoteiRule_(rule, subjectConf) {
     var tools = h('div', { class: 'card row', style: { padding: '10px 14px', marginBottom: '12px' } },
       h('button', { class: 'btn plain', onclick: function () { move(-1); } }, '◀ 前の子'),
       h('button', { class: 'btn plain', onclick: function () { move(1); } }, '次の子 ▶'),
+      h('span', { class: 'small muted' }, 'レーダー'),
+      h('div', { class: 'seg' }, [['subject', '教科ごと'], ['kanten', '観点ごと']].map(function (m) {
+        return h('button', { class: K.radar === m[0] ? 'on' : '', title: m[0] === 'kanten' ? '国語・知、国語・思 … のように、教科を観点に分けて描きます' : '国語・算数 … の教科ごとに描きます',
+          onclick: function () { K.radar = m[0]; render(); } }, m[1]);
+      })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: K.avg, onchange: function (e) { K.avg = e.target.checked; render(); } }), '学級平均も出す'),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: K.shoken, onchange: function (e) { K.shoken = e.target.checked; render(); } }), '所見も入れる'),
       h('span', { class: 'spacer' }),
