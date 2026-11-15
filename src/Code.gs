@@ -102,7 +102,9 @@ function getClassData(classKey, actingAs) {
       if (cc.emails.indexOf(r.studentEmail) === -1) return;
       shoken[r.studentEmail + '|' + r.term] = { text: r.text, at: r.updatedAt };
     });
+    var crit = criteriaOf_(cc.fileId, cc.classKey);
     return {
+      criteria: crit.criteria, hyoteiRules: crit.hyoteiRules, peers: peersOf_(cc),
       classKey: cc.classKey, label: classLabel_(cc.classKey), grade: cc.grade, termSystem: cc.school.termSystem, terms: cc.terms,
       students: cc.students.map(function (s) { return { key: s.email, no: s.number, name: s.name }; }),
       subjects: cc.subjects, tests: testsOfClass_(cc.fileId, cc.classKey), scores: scores, manual: manual, shoken: shoken,
@@ -110,6 +112,93 @@ function getClassData(classKey, actingAs) {
         .map(function (k) { return { classKey: k, label: classLabel_(k) }; }),
       canEditSubjects: !!ctx.actor.isSetup
     };
+  });
+}
+
+/** クラスの評価の基準（'教科|学期' → {kanten, unit}）と評定の表（教科 → {AAA:'3',…}）。 */
+function criteriaOf_(fileId, classKey) {
+  var out = { criteria: {}, hyoteiRules: {} };
+  Store.list(fileId, 'criteria', function (o) { return o.classKey === classKey; }).forEach(function (o) {
+    var v;
+    try { v = JSON.parse(o.value); } catch (e) { return; }
+    if (o.term === HYOTEI_RULE_TERM) out.hyoteiRules[o.subject] = v; else out.criteria[o.subject + '|' + o.term] = v;
+  });
+  return out;
+}
+function writeCriteria_(fileId, classKey, subject, term, value, by) {
+  Store.upsert(fileId, 'criteria', function (o) { return o.key; },
+    [{ key: [classKey, subject, term].join('|'), classKey: classKey, subject: subject, term: term, value: JSON.stringify(value), updatedAt: now_(), updatedBy: by }]);
+}
+/**
+ * 学年のほかのクラスの点数（名前・メール・番号は入れない）。担任が基準を決めるときに、学年の人数をくらべるため。
+ * 並びはクラスごとにばらばらにする（名簿の順から子どもを推測させない）。テストの名前・配点・点数だけを返す。
+ */
+function peersOf_(cc) {
+  var sid = cc.school.schoolId;
+  return Directory.listSchoolClasses(sid).filter(function (c) { return c.classKey !== cc.classKey && gradeOf_(c.classKey) === cc.grade; }).map(function (c) {
+    var emails = Directory.listClassStudents(sid, c.classKey).map(function (x) { return x.email; });
+    for (var i = emails.length - 1; i > 0; i--) { var j = Math.floor(Math.random() * (i + 1)); var t = emails[i]; emails[i] = emails[j]; emails[j] = t; }
+    var byTest = {};
+    Store.list(cc.fileId, Store.classSheet('scores', c.classKey)).forEach(function (r) {
+      var v;
+      try { v = JSON.parse(r.values); } catch (e) { return; }
+      (byTest[r.testId] = byTest[r.testId] || {})[r.studentEmail] = v;
+    });
+    return {
+      label: classLabel_(c.classKey), n: emails.length,
+      tests: testsOfClass_(cc.fileId, c.classKey).map(function (t) {
+        var sc = byTest[t.testId] || {};
+        return { subject: t.subject, term: t.term, name: t.name, points: t.points, rows: emails.map(function (e) { return sc[e] || null; }) };
+      })
+    };
+  });
+}
+
+/** 評価の基準を保存する（クラス×教科×学期）。 */
+function saveCriteria(classKey, subject, term, value, actingAs) {
+  return guard_(function () {
+    var ctx = getContext_(actingAs);
+    var cc = classContext_(ctx, classKey);
+    var sub = cc.subjects.filter(function (x) { return x.name === subject; })[0];
+    if (!sub) throw appError_('この学年の教科ではありません。');
+    if (cc.terms.indexOf(term) === -1) throw appError_('学期が正しくありません。');
+    var v = validateCriteria_(value, sub);
+    writeCriteria_(cc.fileId, cc.classKey, sub.name, term, v, ctx.me);
+    return { criteria: v };
+  });
+}
+
+/** 評定の表を保存する（クラス×教科）。 */
+function saveHyoteiRule(classKey, subject, rule, actingAs) {
+  return guard_(function () {
+    var ctx = getContext_(actingAs);
+    var cc = classContext_(ctx, classKey);
+    var sub = cc.subjects.filter(function (x) { return x.name === subject; })[0];
+    if (!sub) throw appError_('この学年の教科ではありません。');
+    var v = validateHyoteiRule_(rule, sub);
+    writeCriteria_(cc.fileId, cc.classKey, sub.name, HYOTEI_RULE_TERM, v, ctx.me);
+    return { rule: v };
+  });
+}
+
+/** 評価の基準（学期）か評定の表（term='評定'）を、同じ学年のほかのクラス（その先生の担当）にも写す。 */
+function copyCriteriaToClasses(classKey, subject, term, targets, actingAs) {
+  return guard_(function () {
+    var ctx = getContext_(actingAs);
+    var cc = classContext_(ctx, classKey);
+    if (cc.terms.indexOf(term) === -1 && term !== HYOTEI_RULE_TERM) throw appError_('時期が正しくありません。');
+    var mine = criteriaOf_(cc.fileId, cc.classKey);
+    var value = term === HYOTEI_RULE_TERM ? mine.hyoteiRules[subject] : mine.criteria[subject + '|' + term];
+    if (!value) throw appError_('先に、このクラスで保存してください。');
+    checkArray_(targets, 30);
+    var done = [];
+    targets.forEach(function (k) {
+      var tk = requireClass_(ctx, k);
+      if (tk === cc.classKey || gradeOf_(tk) !== cc.grade) throw appError_('写せるのは、同じ学年のほかのクラスだけです。');
+      writeCriteria_(cc.fileId, tk, subject, term, value, ctx.me);
+      done.push(classLabel_(tk));
+    });
+    return { copied: done };
   });
 }
 

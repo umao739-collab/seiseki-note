@@ -43,6 +43,23 @@
   addTests('3-1', '社会', '1学期', [['わたしたちのまち', { '知識・技能': 100, '思考・判断・表現': 50 }]]);
   addTests('3-1', '理科', '1学期', [['植物を育てよう', { '知識・技能': 100, '思考・判断・表現': 50 }], ['こん虫を調べよう', { '知識・技能': 100, '思考・判断・表現': 50 }]]);
   addTests('3-2', '国語', '1学期', [['物語を読もう①', { '知識・技能': 50, '漢字': 50, '思考・判断・表現': 100 }]]);
+  addTests('3-2', '算数', '1学期', [['かけ算', { '知識・技能': 100, '思考・判断・表現': 50 }], ['時こくと時間', { '知識・技能': 100, '思考・判断・表現': 50 }], ['わり算', { '知識・技能': 100, '思考・判断・表現': 50 }], ['たし算とひき算の筆算', { '知識・技能': 100, '思考・判断・表現': 50 }]]);
+  var criteria = {}, hyoteiRules = {};
+  function critOf(ck) {
+    var o = { criteria: {}, hyoteiRules: {} };
+    Object.keys(criteria).forEach(function (k) { var p = k.split('|'); if (p[0] === ck) o.criteria[p[1] + '|' + p[2]] = criteria[k]; });
+    Object.keys(hyoteiRules).forEach(function (k) { var p = k.split('|'); if (p[0] === ck) o.hyoteiRules[p[1]] = hyoteiRules[k]; });
+    return o;
+  }
+  function peersOf(ck) {
+    return Object.keys(classes).filter(function (k) { return k !== ck && gradeOf_(k) === gradeOf_(ck); }).map(function (k) {
+      var em = classes[k].map(function (s) { return s.email; }).sort(function () { return Math.random() - 0.5; });
+      return { label: classLabel_(k), n: em.length, tests: tests.filter(function (t) { return t.classKey === k; }).map(function (t) {
+        var sc = scores[t.testId] || {};
+        return { subject: t.subject, term: t.term, name: t.name, points: t.points, rows: em.map(function (e) { return sc[e] || null; }) };
+      }) };
+    });
+  }
   var skip = { 'こそあど言葉|5': 1, '円と球|12': 1, '円と球|20': 1 };
   tests.forEach(function (t) {
     var list = classes[t.classKey];
@@ -97,11 +114,31 @@
       Object.keys(manual).forEach(function (k) { if (em.indexOf(k.split('|')[0]) !== -1 && manual[k] !== '') mn[k] = manual[k]; });
       var sh = {};
       Object.keys(shoken).forEach(function (k) { if (em.indexOf(k.split('|')[0]) !== -1) sh[k] = shoken[k]; });
-      return { classKey: c, label: classLabel_(c), grade: gradeOf_(c), termSystem: school.termSystem, terms: terms,
+      var cr = critOf(c);
+      return { criteria: cr.criteria, hyoteiRules: cr.hyoteiRules, peers: peersOf(c), classKey: c, label: classLabel_(c), grade: gradeOf_(c), termSystem: school.termSystem, terms: terms,
         students: classes[c].map(function (s) { return { key: s.email, no: s.number, name: s.name }; }),
         subjects: gradeSubjects[gradeOf_(c)], tests: testsOf(c), scores: sc, manual: mn, shoken: sh,
         sameGrade: a.classes.filter(function (k) { return k !== c && gradeOf_(k) === gradeOf_(c); }).map(function (k) { return { classKey: k, label: classLabel_(k) }; }),
         canEditSubjects: a.isSetup };
+    },
+    saveCriteria: function (ck, subject, term, value, actingAs) {
+      var a = actor(actingAs); var c = cls(a, ck);
+      var sub = gradeSubjects[gradeOf_(c)].filter(function (s) { return s.name === subject; })[0];
+      criteria[[c, subject, term].join('|')] = validateCriteria_(value, sub);
+      return { criteria: criteria[[c, subject, term].join('|')] };
+    },
+    saveHyoteiRule: function (ck, subject, rule, actingAs) {
+      var a = actor(actingAs); var c = cls(a, ck);
+      var sub = gradeSubjects[gradeOf_(c)].filter(function (s) { return s.name === subject; })[0];
+      hyoteiRules[c + '|' + subject] = validateHyoteiRule_(rule, sub);
+      return { rule: hyoteiRules[c + '|' + subject] };
+    },
+    copyCriteriaToClasses: function (ck, subject, term, targets, actingAs) {
+      var a = actor(actingAs); var c = cls(a, ck);
+      var v = term === '評定' ? hyoteiRules[c + '|' + subject] : criteria[[c, subject, term].join('|')];
+      if (!v) err('先に、このクラスで保存してください。');
+      targets.forEach(function (k) { var t = cls(a, k); if (term === '評定') hyoteiRules[t + '|' + subject] = v; else criteria[[t, subject, term].join('|')] = v; });
+      return { copied: targets.map(classLabel_) };
     },
     saveTests: function (ck, subject, term, list, actingAs) {
       var a = actor(actingAs); var c = cls(a, ck);

@@ -2,7 +2,7 @@
 /*
  * Logic.html — 成績の計算（純粋関数）。画面（App.html）と、tools/run-local-tests.js が使う。
  *
- * 流れ（SMILEスプレッドシートと同じ考え方）:
+ * 流れ:
  *   テストの点数 → 観点ごとの到達率 → 単元の A/B/C
  *   学期の中のテストを合わせた到達率 → 学期の観点の A/B/C（通知表）
  *   学期の観点の A/B/C を組み合わせ表に当てる → 1年間の観点の A/B/C（指導要録）
@@ -17,9 +17,8 @@
   var SL = {};
   var YEAR = '1年間';
   var ABC = ['A', 'B', 'C'];
-  var POINT = { A: 3, B: 2, C: 1 };
 
-  /** 組み合わせ表（SMILEの「通知表評価の読込設定」と同じ）。学期の数ごと。 */
+  /** 学期の評価から1年間の評価を出す組み合わせ表。学期の数ごと。 */
   var COMBO = {
     3: {
       AAA: 'A', AAB: 'A', AAC: 'B', ABA: 'A', ABB: 'B', ABC: 'B', ACA: 'B', ACB: 'B', ACC: 'B',
@@ -80,6 +79,58 @@
   SL.evalKanten = evalKanten;
   function kantenOf(sub, label) { return sub.kanten.filter(function (k) { return k.label === label; })[0] || null; }
 
+  // ================= 評価の基準・評定の表 =================
+
+  /**
+   * クラス×教科×学期の評価の基準。{ kanten: { 観点: {a, b} }, unit: {a, b} }
+   * a = A になる %（以上）、b = C になる %（未満）。間が B。
+   */
+  SL.criteriaFor = function (cd, sub, term) {
+    var saved = (cd.criteria || {})[sub.name + '|' + term] || {};
+    var out = { kanten: {}, unit: { a: sub.total.a, b: sub.total.b } };
+    testKanten(sub).filter(function (k) { return !k.into; }).forEach(function (k) {
+      var v = (saved.kanten || {})[k.label];
+      out.kanten[k.label] = v ? { a: v.a, b: v.b } : { a: k.a, b: k.b };
+    });
+    if (saved.unit) out.unit = { a: saved.unit.a, b: saved.unit.b };
+    return out;
+  };
+
+  /** 観点が n 個のときの、A・B・C の組み合わせ（並びは関係なし。AAB と ABA は同じ）。 */
+  function combosOf(n) {
+    var out = [];
+    (function walk(prefix, from) {
+      if (prefix.length === n) { out.push(prefix); return; }
+      for (var i = from; i < 3; i++) walk(prefix + ABC[i], i);
+    })('', 0);
+    return out;
+  }
+  SL.combosOf = combosOf;
+  /** 評定の表の初期値: 3 はぜんぶ A、1 は C が2つ以上（または全部 C）、ほかは 2。 */
+  function defaultHyotei(n) {
+    var out = {};
+    combosOf(n).forEach(function (k) {
+      var c = k.split('C').length - 1;
+      out[k] = k.indexOf('B') === -1 && c === 0 ? '3' : (c >= Math.min(2, n) ? '1' : '2');
+    });
+    return out;
+  }
+  SL.defaultHyotei = defaultHyotei;
+  /** クラス×教科の評定の表。 */
+  SL.hyoteiRuleFor = function (cd, sub) {
+    var n = evalKanten(sub).length;
+    var def = defaultHyotei(n);
+    var saved = (cd.hyoteiRules || {})[sub.name] || {};
+    Object.keys(def).forEach(function (k) { if (/^[1-3]$/.test(saved[k] || '')) def[k] = saved[k]; });
+    return def;
+  };
+  /** 観点の評価の並び → 組み合わせの名前（AAB など）。空・評価不能があれば ''。 */
+  function comboKey(evals) {
+    if (!evals.length || evals.some(function (e) { return ABC.indexOf(e) === -1; })) return '';
+    return evals.slice().sort().join('');
+  }
+  SL.comboKey = comboKey;
+
   // ================= テスト（単元） =================
 
   /** 1人の子の、1つのテストの結果。点が1つも入っていなければ null。 */
@@ -95,7 +146,7 @@
     });
     if (!any) return null;
     var rt = rate(sum, max);
-    var t = sub.total;
+    var t = SL.criteriaFor(cd, sub, test.term).unit;
     return { sum: sum, max: max, rate: rt, eval: abcOf(rt, t.a, t.b), per: per };
   };
 
@@ -136,24 +187,24 @@
         allSum += v; allMax += t.points[label];
       });
     });
+    var crit = SL.criteriaFor(cd, sub, term);
     var out = evalKanten(sub).map(function (k) {
       var a = acc[k.label] || { sum: 0, max: 0 };
       var rt = k.test ? rate(a.sum, a.max) : null;
-      var auto = k.test ? abcOf(rt, k.a, k.b) : '';
+      var th = crit.kanten[k.label] || { a: k.a, b: k.b };
+      var auto = k.test ? abcOf(rt, th.a, th.b) : '';
       var manual = manualOf(cd, sk, sub.name, term, k.label);
       return { label: k.label, gg: k.gg, test: k.test, sum: a.sum, max: a.max, rate: rt, auto: auto, manual: manual, final: manual || auto };
     });
-    var hy = hyoteiOf(sub, out.map(function (x) { return x.final; }));
+    var hy = hyoteiOf(cd, sub, out.map(function (x) { return x.final; }));
     var hManual = manualOf(cd, sk, sub.name, term, '評定');
     return { kanten: out, hyotei: { auto: hy, manual: hManual, final: hManual || hy }, total: { rate: rate(allSum, allMax) } };
   };
 
-  /** 観点の A/B/C から評定（3・2・1）。1つでも空・評価不能があれば ''。 */
-  function hyoteiOf(sub, evals) {
-    if (!evals.length || evals.some(function (e) { return !POINT[e]; })) return '';
-    var avg = evals.reduce(function (s, e) { return s + POINT[e]; }, 0) / evals.length;
-    var t = sub.total;
-    return avg >= t.r3 ? '3' : avg >= t.r2 ? '2' : '1';
+  /** 観点の A/B/C の組み合わせを評定の表に当てる（3・2・1）。1つでも空・評価不能があれば ''。 */
+  function hyoteiOf(cd, sub, evals) {
+    var key = comboKey(evals);
+    return key ? (SL.hyoteiRuleFor(cd, sub)[key] || '') : '';
   }
   SL.hyoteiOf = hyoteiOf;
 
@@ -175,7 +226,7 @@
       var manual = manualOf(cd, sk, sub.name, YEAR, k.label);
       return { label: k.label, gg: k.gg, terms: seq, auto: auto, manual: manual, final: manual || auto };
     });
-    var hy = hyoteiOf(sub, out.map(function (x) { return x.final; }));
+    var hy = hyoteiOf(cd, sub, out.map(function (x) { return x.final; }));
     var hManual = manualOf(cd, sk, sub.name, YEAR, '評定');
     return { kanten: out, hyotei: { auto: hy, manual: hManual, final: hManual || hy } };
   };
@@ -254,6 +305,43 @@
     var kAvg = {};
     Object.keys(kSum).forEach(function (l) { kAvg[l] = rate(kSum[l], kMax[l]); });
     return { entered: n, avg: n ? r1(sumRate / n) : null, abc: abc, kAvg: kAvg };
+  };
+
+  /**
+   * 学年のほかのクラス（名前なしの点数）を、いまの基準で数える。
+   * peer = { label, n, tests: [{ subject, term, name, points, rows: [ {観点: 点} | null ] }] }（rows は n 人ぶん、並びはクラスの中でそろっている）
+   * 返す: { kanten: { 観点: {A,B,C} }, tests: { テスト名: {A,B,C} } }
+   */
+  SL.peerCounts = function (peer, sub, term, crit) {
+    var tests = peer.tests.filter(function (t) { return t.subject === sub.name && t.term === term; });
+    var out = { kanten: {}, tests: {} };
+    var acc = [];
+    for (var i = 0; i < peer.n; i++) acc.push({});
+    tests.forEach(function (t) {
+      var cnt = { A: 0, B: 0, C: 0 };
+      t.rows.forEach(function (row, i) {
+        if (!row) return;
+        var sum = 0, max = 0, any = false;
+        Object.keys(t.points).forEach(function (l) {
+          var v = row[l];
+          if (v === null || v === undefined || v === '') return;
+          any = true; sum += v; max += t.points[l];
+          var k = sub.kanten.filter(function (x) { return x.label === l; })[0];
+          if (!k) return;
+          var target = k.into || l;
+          var a = acc[i][target] = acc[i][target] || { sum: 0, max: 0 };
+          a.sum += v; a.max += t.points[l];
+        });
+        if (any) cnt[abcOf(rate(sum, max), crit.unit.a, crit.unit.b)]++;
+      });
+      out.tests[t.name] = cnt;
+    });
+    Object.keys(crit.kanten).forEach(function (l) {
+      var cnt = { A: 0, B: 0, C: 0 };
+      acc.forEach(function (a) { if (a[l] && a[l].max) cnt[abcOf(rate(a[l].sum, a[l].max), crit.kanten[l].a, crit.kanten[l].b)]++; });
+      out.kanten[l] = cnt;
+    });
+    return out;
   };
 
   root.SL = SL;

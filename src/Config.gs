@@ -13,7 +13,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.1.0';
+var APP_VERSION = '2.2.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -39,6 +39,8 @@ var SCHEMA = {
   scores: ['key', 'testId', 'studentEmail', 'values', 'updatedAt', 'updatedBy'],
   /** 先生が入れる値（主体的に学習に取り組む態度・手直し）。クラスごとのシート manual_<classKey>。 */
   manual: ['key', 'studentEmail', 'subject', 'term', 'field', 'value', 'updatedAt', 'updatedBy'],
+  /** 評価の基準（クラス×教科×学期）と評定の表（クラス×教科・term は「評定」）。value は JSON。 */
+  criteria: ['key', 'classKey', 'subject', 'term', 'value', 'updatedAt', 'updatedBy'],
   /** 所見（クラスごとのシート shoken_<classKey>）。 */
   shoken: ['key', 'studentEmail', 'term', 'text', 'updatedAt', 'updatedBy']
 };
@@ -47,6 +49,8 @@ var CLASS_SHEETS = { scores: 'scores_', manual: 'manual_', shoken: 'shoken_' };
 /** 学期の名前。 */
 var TERM_LABELS = { '3学期制': ['1学期', '2学期', '3学期'], '2学期制': ['前期', '後期'] };
 var YEAR_TERM = '1年間';
+/** criteria シートで、評定の表の行に使う term。 */
+var HYOTEI_RULE_TERM = '評定';
 
 var MAX_LEN = { testName: 40, shoken: 800, subject: 20, kanten: 30, schoolName: 60 };
 var MAX_TESTS_PER_TERM = 40;
@@ -85,7 +89,7 @@ var SCHOOL_LIST = [
 var MASTER_STUDENT_COLS = { status: '状態', school: '学校', family: '姓', given: '名', email: 'Googleアカウント', grade: '年', classNo: '組', number: '番' };
 var MASTER_STAFF_COLS = { status: '状態', school: '学校', family: '姓', given: '名', email: 'Googleアカウント', title: '役職' };
 
-/** 教科・観点・基準の初期値（SMILEスプレッドシートの「観点名・評価基準設定」と同じ形）。 */
+/** 教科・観点・基準の初期値（学校の設定。担任はクラスごとに変えられる）。 */
 var KANTEN_KNOW = '知識・技能', KANTEN_THINK = '思考・判断・表現', KANTEN_ATTITUDE = '主体的に学習に取り組む態度';
 function defaultSubject_(name, opts) {
   opts = opts || {};
@@ -116,6 +120,7 @@ function defaultSubjectsForGrade_(grade) {
  * tools/run-local-tests.js がグローバル関数の一覧と照らし合わせる。
  */
 var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
+  'saveCriteria', 'saveHyoteiRule', 'copyCriteriaToClasses',
   'saveShoken', 'saveGradeSubjects', 'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
 var ADMIN_FUNCTIONS = ['setup', 'startFiscalYear', 'closeFiscalYear'];
 var ENTRY_FUNCTIONS = ['doGet'];

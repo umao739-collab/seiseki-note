@@ -148,9 +148,11 @@
   var S = {
     actingAs: null, personas: window.__PERSONAS__ || [], isDemo: !!window.__IS_DEMO__,
     boot: null, view: 'loading', msg: '', classKey: null, cd: null, tab: 'scores',
-    subject: null, term: null, pending: { scores: {}, manual: {} }, setup: null, admin: null, setupGrade: null
+    subject: null, term: null, pending: { scores: {}, manual: {}, criteria: {}, rules: {} }, setup: null, admin: null, setupGrade: null
   };
-  function pendingCount() { return Object.keys(S.pending.scores).length + Object.keys(S.pending.manual).length; }
+  function pendingCount() {
+    return Object.keys(S.pending.scores).length + Object.keys(S.pending.manual).length + Object.keys(S.pending.criteria).length + Object.keys(S.pending.rules).length;
+  }
   window.addEventListener('beforeunload', function (e) { if (pendingCount()) { e.preventDefault(); e.returnValue = ''; } });
 
   function toast(msg, isErr) {
@@ -177,10 +179,10 @@
   }
   function leaveOk() {
     if (!pendingCount()) return Promise.resolve(true);
-    return ask('保存していない入力があります', h('p', null, 'まだ保存していない入力が ' + pendingCount() + 'マス あります。どうしますか？'),
+    return ask('保存していない入力があります', h('p', null, 'まだ保存していない入力が ' + pendingCount() + 'つ あります。どうしますか？'),
       [['もどる', 'back', 'plain'], ['保存しないで進む', 'drop', 'plain'], ['保存して進む', 'save', 'wakaba']]).then(function (v) {
       if (v === 'back') return false;
-      if (v === 'drop') { S.pending = { scores: {}, manual: {} }; return reloadClass().then(function () { return true; }); }
+      if (v === 'drop') { S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} }; return reloadClass().then(function () { return true; }); }
       return saveAll().then(function () { return true; });
     });
   }
@@ -200,7 +202,7 @@
     S.view = 'loading'; S.msg = classKey.replace('-', '年') + '組の成績をひらいています…'; render();
     call('getClassData', classKey).then(function (cd) {
       S.cd = cd; S.classKey = classKey; S.view = 'class';
-      S.pending = { scores: {}, manual: {} };
+      S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} };
       if (!S.subject || !cd.subjects.some(function (x) { return x.name === S.subject; })) S.subject = cd.subjects[0].name;
       if (!S.term || (cd.terms.indexOf(S.term) === -1 && S.term !== YEAR)) S.term = cd.terms[0];
       if (!cd.tests.length) S.tab = 'tests';
@@ -347,7 +349,7 @@
   function saveBar() {
     var n = pendingCount();
     return h('div', { class: 'savebar' + (n ? '' : ' clean') },
-      n ? h('span', null, '✏️ 保存していない入力が ', h('b', null, n), ' マスあります') : h('span', null, '🌱 ぜんぶ保存されています'),
+      n ? h('span', null, '✏️ 保存していない入力が ', h('b', null, n), ' つあります') : h('span', null, '🌱 ぜんぶ保存されています'),
       h('span', { class: 'spacer' }),
       h('button', { class: 'btn wakaba', disabled: !n, onclick: function () { saveAll(); } }, '💾 保存する'));
   }
@@ -362,11 +364,17 @@
     var jobs = [];
     if (sc.length) jobs.push(call('saveScores', cd.classKey, sc));
     if (mn.length) jobs.push(call('saveManual', cd.classKey, mn));
+    var nc = 0;
+    Object.keys(S.pending.criteria).forEach(function (k) {
+      var p = k.split('|'); nc++;
+      jobs.push(call('saveCriteria', cd.classKey, p[0], p[1], cd.criteria[k]));
+    });
+    Object.keys(S.pending.rules).forEach(function (sub) { nc++; jobs.push(call('saveHyoteiRule', cd.classKey, sub, cd.hyoteiRules[sub])); });
     var btn = document.querySelector('.savebar .btn');
     if (btn) { btn.disabled = true; btn.textContent = '保存しています…'; }
     return Promise.all(jobs).then(function () {
-      S.pending = { scores: {}, manual: {} };
-      toast('保存しました（' + (sc.length + mn.length) + 'マス）');
+      S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} };
+      toast('保存しました' + (sc.length + mn.length ? '（' + (sc.length + mn.length) + 'マス）' : '') + (nc ? '（基準・評定の表）' : ''));
       refreshSaveBar();
     }).catch(function (e) { fail(e); refreshSaveBar(); throw e; });
   }
@@ -442,6 +450,148 @@
       box);
   }
 
+  // ---------- 評価の基準（担任が決める・その場で反映） ----------
+  function abcText(c) { return 'A ' + c.A + '・B ' + c.B + '・C ' + c.C; }
+  function countBar(c) {
+    var t = (c.A + c.B + c.C) || 1;
+    return h('span', { class: 'cbar', title: abcText(c) },
+      h('span', { class: 'cbar-in' },
+        h('i', { style: { width: (c.A / t * 100) + '%', background: 'var(--A)' } }),
+        h('i', { style: { width: (c.B / t * 100) + '%', background: 'var(--B)' } }),
+        h('i', { style: { width: (c.C / t * 100) + '%', background: 'var(--C)' } })),
+      h('span', { class: 'cnum' }, h('b', { style: { color: 'var(--A)' } }, 'A' + c.A), ' ', h('b', { style: { color: 'var(--B)' } }, 'B' + c.B), ' ', h('b', { style: { color: 'var(--C)' } }, 'C' + c.C)));
+  }
+  /** このクラスの人数（いまの基準で）: 観点は学期の計算の評価、テストはテストごとの評価。 */
+  function myCounts(cd, sub, term) {
+    var out = { kanten: {}, tests: {} };
+    var ks = SL.evalKanten(sub).filter(function (k) { return k.test; });
+    ks.forEach(function (k) { out.kanten[k.label] = { A: 0, B: 0, C: 0 }; });
+    cd.students.forEach(function (st) {
+      var te = SL.termEval(cd, sub, st.key, term);
+      te.kanten.forEach(function (x) { if (out.kanten[x.label] && x.auto) out.kanten[x.label][x.auto]++; });
+    });
+    SL.testsOf(cd, sub.name, term).forEach(function (t) {
+      var c = { A: 0, B: 0, C: 0 };
+      cd.students.forEach(function (st) { var r = SL.testResult(cd, sub, t, st.key); if (r) c[r.eval]++; });
+      out.tests[t.name] = c;
+    });
+    return out;
+  }
+  function criteriaPanel(sub, term, onChange) {
+    var cd = S.cd, key = sub.name + '|' + term;
+    var crit = SL.criteriaFor(cd, sub, term);
+    var box = h('div', { class: 'crit' });
+    var rowsDef = SL.evalKanten(sub).filter(function (k) { return k.test; }).map(function (k) { return { label: short(k.label), full: k.label, cls: kClass(k.label, k.gg), get: function () { return crit.kanten[k.label]; } }; });
+    rowsDef.push({ label: 'テストの評価', full: '', cls: '', get: function () { return crit.unit; } });
+    function commit() {
+      cd.criteria = cd.criteria || {};
+      cd.criteria[key] = JSON.parse(JSON.stringify(crit));
+      S.pending.criteria[key] = true;
+      draw(); onChange(); refreshSaveBar();
+    }
+    function numBox(obj, field, other, isA) {
+      var inp = h('input', { class: 'text num', inputmode: 'numeric', value: obj[field], 'aria-label': isA ? 'A になる%' : 'C になる%',
+        onchange: function (e) {
+          var v = Number(String(e.target.value).replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); }));
+          if (!isFinite(v) || Math.round(v) !== v || v < 0 || v > 100 || (isA ? v <= obj[other] : v >= obj[other])) { toast(isA ? 'A の % は、C の % より大きくしてください（1〜100）' : 'C の % は、A の % より小さくしてください', true); e.target.value = obj[field]; return; }
+          obj[field] = v; commit();
+        } });
+      function step(d) {
+        var v = obj[field] + d;
+        if (v < 0 || v > 100 || (isA ? v <= obj[other] : v >= obj[other])) return;
+        obj[field] = v; commit();
+      }
+      return h('span', { class: 'stepper' }, h('button', { class: 'st', 'aria-label': '1 へらす', onclick: function () { step(-1); } }, '−'), inp,
+        h('button', { class: 'st', 'aria-label': '1 ふやす', onclick: function () { step(1); } }, '＋'));
+    }
+    function draw() {
+      clear(box);
+      var mine = myCounts(cd, sub, term);
+      var peers = (cd.peers || []).map(function (p) { return { label: p.label.replace(/^\d+年/, ''), c: SL.peerCounts(p, sub, term, crit) }; });
+      var sumTests = function (tests) { var c = { A: 0, B: 0, C: 0 }; Object.keys(tests).forEach(function (n) { c.A += tests[n].A; c.B += tests[n].B; c.C += tests[n].C; }); return c; };
+      box.appendChild(h('table', { class: 'crit-table' },
+        h('thead', null, h('tr', null, h('th', null, ''), h('th', null, 'A になる'), h('th', null, 'C になる'), h('th', null, 'このクラス'),
+          peers.map(function (p) { return h('th', null, p.label); }))),
+        h('tbody', null, rowsDef.map(function (r) {
+          var o = r.get();
+          var mc = r.full ? mine.kanten[r.full] : sumTests(mine.tests);
+          return h('tr', null, h('th', { class: r.cls }, r.label),
+            h('td', null, numBox(o, 'a', 'b', true), ' %以上'),
+            h('td', null, numBox(o, 'b', 'a', false), ' %未満'),
+            h('td', { class: 'me' }, countBar(mc || { A: 0, B: 0, C: 0 })),
+            peers.map(function (p) { return h('td', null, countBar((r.full ? p.c.kanten[r.full] : sumTests(p.c.tests)) || { A: 0, B: 0, C: 0 })); }));
+        }))));
+      var tests = SL.testsOf(cd, sub.name, term);
+      if (tests.length) box.appendChild(h('div', { class: 'crit-tests' }, h('span', { class: 'muted small' }, 'テストごと（このクラス）'),
+        tests.map(function (t, i) { return h('span', { class: 'tchip' }, h('span', { class: 'tn' }, (i + 1) + '. ' + t.name), countBar(mine.tests[t.name] || { A: 0, B: 0, C: 0 })); })));
+      box.appendChild(h('div', { class: 'row small', style: { marginTop: '8px' } },
+        h('span', { class: 'muted' }, 'B は、その間です。数字を変えると、表の評価と人数がすぐ変わります（「保存する」で決まります）。',
+          cd.peers && cd.peers.length ? 'ほかのクラスは、名前なしの点数から数えています。' : ''),
+        h('span', { class: 'spacer' }),
+        cd.sameGrade.length ? h('button', { class: 'btn plain', onclick: function () { copyToGrade(sub.name, term, '評価の基準（' + sub.name + '・' + term + '）'); } }, '👯 同じ学年にも反映') : null));
+    }
+    draw();
+    return h('details', { class: 'card crit-card', open: true }, h('summary', null, h('span', { class: 'wash sakura' }, '評価の基準'), h('span', { class: 'muted small' }, '　' + sub.name + '・' + term)), box);
+  }
+  /** 保存してから、同じ学年のクラスに写す（評価の基準・評定の表）。 */
+  function copyToGrade(subject, term, what) {
+    var cd = S.cd;
+    (pendingCount() ? saveAll() : Promise.resolve()).then(function () {
+      var key = term === '評定' ? null : subject + '|' + term;
+      if (key && !(cd.criteria || {})[key] || !key && !(cd.hyoteiRules || {})[subject]) {
+        cd.criteria = cd.criteria || {}; cd.hyoteiRules = cd.hyoteiRules || {};
+        var sub = cd.subjects.filter(function (x) { return x.name === subject; })[0];
+        if (key) { cd.criteria[key] = SL.criteriaFor(cd, sub, term); S.pending.criteria[key] = true; }
+        else { cd.hyoteiRules[subject] = SL.hyoteiRuleFor(cd, sub); S.pending.rules[subject] = true; }
+        return saveAll();
+      }
+    }).then(function () {
+      var chosen = {};
+      var body = h('div', null, h('p', null, 'このクラスの' + what + 'を、ほかのクラスにも写します。'),
+        cd.sameGrade.map(function (c) { return h('div', null, h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: function (e) { chosen[c.classKey] = e.target.checked; } }), c.label)); }));
+      return ask('同じ学年にも反映', body, [['やめる', false, 'plain'], ['反映する', true, 'sora']]).then(function (ok) {
+        var targets = Object.keys(chosen).filter(function (k) { return chosen[k]; });
+        if (!ok || !targets.length) return;
+        return call('copyCriteriaToClasses', cd.classKey, subject, term, targets).then(function (r) { toast(r.copied.join('・') + ' に反映しました'); });
+      });
+    }).catch(fail);
+  }
+
+  // ---------- 評定の表（観点の組み合わせ） ----------
+  function hyoteiPanel(sub, term, onChange) {
+    var cd = S.cd;
+    var rule = SL.hyoteiRuleFor(cd, sub);
+    var box = h('div', { class: 'hy-grid' });
+    function draw() {
+      clear(box);
+      var count = {};
+      cd.students.forEach(function (st) {
+        var ev = SL.evalFor(cd, sub, st.key, term);
+        var k = SL.comboKey(ev.kanten.map(function (x) { return x.final; }));
+        if (k) count[k] = (count[k] || 0) + 1;
+      });
+      SL.combosOf(SL.evalKanten(sub).length).forEach(function (k) {
+        box.appendChild(h('div', { class: 'hy-cell hy' + rule[k] },
+          h('div', { class: 'hy-combo' }, k.split('').map(function (x) { return h('span', { class: 'ev sm ' + x }, x); })),
+          h('div', { class: 'hy-to' }, '→',
+            h('select', { class: 'text', 'aria-label': k + ' の評定', onchange: function (e) {
+              rule[k] = e.target.value;
+              cd.hyoteiRules = cd.hyoteiRules || {};
+              cd.hyoteiRules[sub.name] = JSON.parse(JSON.stringify(rule));
+              S.pending.rules[sub.name] = true;
+              draw(); onChange(); refreshSaveBar();
+            } }, ['3', '2', '1'].map(function (v) { return h('option', { value: v, selected: rule[k] === v }, v); }))),
+          h('div', { class: 'hy-n muted small' }, (count[k] || 0) + '人')));
+      });
+    }
+    draw();
+    return h('details', { class: 'card crit-card', open: true },
+      h('summary', null, h('span', { class: 'wash fuji' }, '評定の表'), h('span', { class: 'muted small' }, '　観点の A・B・C の組み合わせ（並びは関係なし）で評定を決めます')),
+      box,
+      h('div', { class: 'row small', style: { marginTop: '8px' } }, h('span', { class: 'muted' }, '人数は、いまの評価で数えています。'), h('span', { class: 'spacer' }),
+        cd.sameGrade.length ? h('button', { class: 'btn plain', onclick: function () { copyToGrade(sub.name, '評定', '評定の表（' + sub.name + '）'); } }, '👯 同じ学年にも反映') : null));
+  }
+
   // ---------- 点数を入れる ----------
   function viewScores() {
     var cd = S.cd, sub = subjectOf();
@@ -486,10 +636,16 @@
           S.pending.scores[[col.test.testId, sk, col.kanten].join('|')] = ch.value;
         });
       },
-      afterChange: function () { grid.refresh(); refreshSaveBar(); },
+      afterChange: function () { grid.refresh(); refreshSaveBar(); panelRefresh(); },
       notify: toast
     });
-    return h('div', null, top, grid.el, gridHelp(), saveBar());
+    var panelHolder = h('div');
+    function panelRefresh() {
+      clear(panelHolder);
+      panelHolder.appendChild(criteriaPanel(sub, S.term, function () { grid.refresh(); }));
+    }
+    panelRefresh();
+    return h('div', null, top, panelHolder, grid.el, gridHelp(), saveBar());
   }
 
   // ---------- 学期の成績・要録 ----------
@@ -541,26 +697,30 @@
       afterChange: function () { grid.refresh(); refreshSaveBar(); },
       notify: toast
     });
-    return grid;
+    return { el: grid.el, refresh: function () { cache = {}; grid.refresh(); } };
   }
   function viewTerm() {
     var sub = subjectOf();
     var grid = evalGrid(S.term);
+    var refresh = function () { grid.refresh(); };
     return h('div', null, pickers({}),
       h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
-        'テストの点から、学期の観点の評価を出しています（A・B の基準は ' + sub.total.a + '%・' + sub.total.b + '%）。',
+        'テストの点から、学期の観点の評価を出しています。評価の基準は、下の「評価の基準」で変えられます（「点数を入れる」の画面と同じものです）。',
         h('br'), '「主体的に学習に取り組む態度」は、先生が A・B・C を入れてください。計算の評価を変えたいときは、そのマスに打ちこめば先生の値（✎）が優先されます。Delete で計算にもどります。')),
+      criteriaPanel(sub, S.term, refresh),
+      sub.hyoteiTerm ? hyoteiPanel(sub, S.term, refresh) : null,
       grid.el, gridHelp(), saveBar());
   }
   function viewYear() {
     var cd = S.cd, sub = subjectOf();
     var grid = evalGrid(YEAR);
-    var combo = SL.COMBO[cd.terms.length] || {};
+    var refresh = function () { grid.refresh(); };
     return h('div', null, pickers({ noTerm: true }),
       h('div', { class: 'say', style: { marginBottom: '14px' } }, rabbit(48), h('div', { class: 'bubble small' },
-        '学期ごとの評価（' + cd.terms.join('・') + '）を、SMILEスプレッドシートと同じ組み合わせ表に当てて、指導要録の観点の評価を出しています。',
-        h('br'), 'すべての学期に評価が入っている観点だけが出ます。' + (sub.hyoteiYear ? '評定は、観点の評価を A=3・B=2・C=1 にした平均が ' + sub.total.r3 + '以上で3、' + sub.total.r2 + '以上で2です。' : ''),
-        h('div', null, h('button', { class: 'linkbtn', onclick: showCombo }, '組み合わせ表を見る')))),
+        '学期ごとの評価（' + cd.terms.join('・') + '）を組み合わせ表に当てて、指導要録の観点の評価を出しています。すべての学期に評価が入っている観点だけが出ます。',
+        sub.hyoteiYear ? h('span', null, h('br'), '評定は、下の「評定の表」で決めます。') : null,
+        h('div', null, h('button', { class: 'linkbtn', onclick: showCombo }, '学期→1年間の組み合わせ表を見る')))),
+      sub.hyoteiYear ? hyoteiPanel(sub, YEAR, refresh) : null,
       grid.el, gridHelp(), saveBar());
   }
   function showCombo() {
@@ -709,7 +869,7 @@
         var kt = sub.kanten;
         return h('div', { class: 'card' },
           h('h3', { style: { margin: '0 0 6px' } }, sub.name),
-          h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, '観点'), h('th', null, 'GG'), h('th', null, 'A %以上'), h('th', null, 'B %以上'))),
+          h('table', { class: 'form' }, h('thead', null, h('tr', null, h('th', null, '観点'), h('th', null, 'GG'), h('th', null, 'A ○%以上'), h('th', null, 'C ○%未満'))),
             h('tbody', null, kt.map(function (k) {
               return h('tr', null, h('td', { class: kClass(k.label, k.gg) }, k.label + (k.into ? '（→' + short(k.into) + '）' : '') + (!k.test ? '（先生が入れる）' : '')),
                 h('td', null, k.gg || '—'),
@@ -717,16 +877,13 @@
                 h('td', null, k.test ? h('input', { class: 'text num', value: k.b, oninput: function (e) { k.b = e.target.value; } }) : ''));
             }))),
           h('div', { class: 'row small', style: { marginTop: '8px' } },
-            h('span', null, '単元の評価 A ', h('input', { class: 'text num', value: sub.total.a, oninput: function (e) { sub.total.a = e.target.value; } }), '% B ',
-              h('input', { class: 'text num', value: sub.total.b, oninput: function (e) { sub.total.b = e.target.value; } }), '%')),
-          h('div', { class: 'row small', style: { marginTop: '6px' } },
-            h('span', null, '評定 3: ', h('input', { class: 'text num', value: sub.total.r3, oninput: function (e) { sub.total.r3 = Number(e.target.value); } }), '以上・2: ',
-              h('input', { class: 'text num', value: sub.total.r2, oninput: function (e) { sub.total.r2 = Number(e.target.value); } }), '以上')),
+            h('span', null, 'テストの評価 A ', h('input', { class: 'text num', value: sub.total.a, oninput: function (e) { sub.total.a = e.target.value; } }), '%以上・C ',
+              h('input', { class: 'text num', value: sub.total.b, oninput: function (e) { sub.total.b = e.target.value; } }), '%未満')),
           h('div', { class: 'row small', style: { marginTop: '6px' } },
             h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sub.hyoteiTerm, onchange: function (e) { sub.hyoteiTerm = e.target.checked; } }), '通知表に評定を出す'),
             h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: sub.hyoteiYear, onchange: function (e) { sub.hyoteiYear = e.target.checked; } }), '要録に評定を出す')));
       }));
-      wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash wakaba' }, '③ 教科・観点・評価の基準'), h('span', { class: 'sub' }, '学年ごと。SMILEの「観点名・評価基準設定」と同じ考え方です')),
+      wrap.appendChild(h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash wakaba' }, '③ 教科・観点・評価の基準の初期値'), h('span', { class: 'sub' }, '学年ごとの最初の値です。担任の先生は、クラスごとに「点数を入れる」画面で変えられます')),
         h('div', { class: 'pick', style: { marginBottom: '12px' } }, h('span', { class: 'q' }, '学年'), grades.map(function (g) {
           return h('button', { class: 'pill' + (g.grade === gsel.grade ? ' on' : ''), onclick: function () { S.setupGrade = g.grade; render(); } }, g.grade + '年');
         })),

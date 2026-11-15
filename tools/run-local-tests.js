@@ -114,7 +114,7 @@ run('R06 教科・観点・基準の検査', () => {
   const v = ctx.validateGradeSubjects_(JSON.parse(JSON.stringify(g3)));
   eq(v.length, g3.length);
   const bad = JSON.parse(JSON.stringify(g3)); bad[0].kanten[0].b = 90;
-  throws(() => ctx.validateGradeSubjects_(bad), /Bの基準/);
+  throws(() => ctx.validateGradeSubjects_(bad), /C になる/);
   const bad2 = JSON.parse(JSON.stringify(g3)); bad2[0].kanten[1].into = 'ないもの';
   throws(() => ctx.validateGradeSubjects_(bad2), /まとめ先/);
   const bad3 = JSON.parse(JSON.stringify(g3)); bad3[0].total.r3 = 1.2;
@@ -127,6 +127,19 @@ run('R07 担任の割り当ての検査', () => {
   throws(() => ctx.normalizeAssignments_([{ classKey: '3-1', homeroom: 'z@example.com' }], ['3-1'], ['t@example.com']), /教職員/);
 });
 
+run('R11 評価の基準・評定の表の検査', () => {
+  const v = ctx.validateCriteria_({ kanten: { '知識・技能': { a: '95', b: 60 } }, unit: { a: 90, b: 50 } }, koku);
+  eq(v, { kanten: { '知識・技能': { a: 95, b: 60 } }, unit: { a: 90, b: 50 } });
+  throws(() => ctx.validateCriteria_({ kanten: {}, unit: { a: 60, b: 60 } }, koku), /小さく/);
+  throws(() => ctx.validateCriteria_({ kanten: { '漢字': { a: 90, b: 50 } }, unit: { a: 90, b: 50 } }, koku), /観点ではありません/);
+  throws(() => ctx.validateCriteria_({ kanten: {}, unit: { a: 101, b: 50 } }, koku), /1〜100/);
+  const r = ctx.validateHyoteiRule_(Object.assign(SL.defaultHyotei(3), { AAB: '３' }), koku);
+  eq(r.AAB, '3');
+  throws(() => ctx.validateHyoteiRule_(Object.assign(SL.defaultHyotei(3), { AAB: '4' }), koku), /1・2・3/);
+  throws(() => ctx.validateHyoteiRule_(Object.assign(SL.defaultHyotei(3), { XYZ: '1' }), koku), /形/);
+  const less = SL.defaultHyotei(3); delete less.CCC;
+  throws(() => ctx.validateHyoteiRule_(less, koku), /CCC/);
+});
 run('R08 名簿マスター: 学校コードで見分け、決まった列だけを取り込む', () => {
   ok(ctx.schoolMatches_('nr-435_大安寺西小学校', '435', '奈良市立大安寺西小学校'));
   ok(!ctx.schoolMatches_('nr-408_大安寺小学校', '435', '奈良市立大安寺西小学校'));
@@ -192,14 +205,37 @@ run('L02 学期の観点: 漢字は知識・技能にまとめて計算、基準
   eq(te.kanten.map((x) => x.label), ['知識・技能', '思考・判断・表現', '主体的に学習に取り組む態度'], '漢字・言葉は評価の列に出さない');
   eq(te.kanten[2].final, '', '主体的は先生が入れるまで空');
 });
-run('L03 手直しは計算より優先、評定は観点の平均', () => {
+run('L03 手直しは計算より優先、評定は組み合わせの表', () => {
   const cd = cdOf();
   cd.manual['a|国語|1学期|主体的に学習に取り組む態度'] = 'A';
   let te = SL.termEval(cd, koku, 'a', '1学期');
-  eq(te.hyotei.auto, '3', 'A,B,A → 2.67 → 3');
+  eq(te.hyotei.auto, '2', 'A,B,A → AAB → 2');
   cd.manual['a|国語|1学期|知識・技能'] = 'C';
   te = SL.termEval(cd, koku, 'a', '1学期');
-  eq([te.kanten[0].auto, te.kanten[0].final, te.hyotei.auto], ['A', 'C', '2']);
+  eq([te.kanten[0].auto, te.kanten[0].final, te.hyotei.auto], ['A', 'C', '2'], 'C,B,A → ABC → 2');
+  cd.hyoteiRules = { '国語': Object.assign(SL.defaultHyotei(3), { ABC: '1' }) };
+  eq(SL.termEval(cd, koku, 'a', '1学期').hyotei.auto, '1', '先生が決めた表を使う');
+});
+run('L09 評定の表の初期値（3=AAA だけ・1=C が2つ以上）', () => {
+  eq(SL.combosOf(3), ['AAA', 'AAB', 'AAC', 'ABB', 'ABC', 'ACC', 'BBB', 'BBC', 'BCC', 'CCC']);
+  eq(SL.defaultHyotei(3), { AAA: '3', AAB: '2', AAC: '2', ABB: '2', ABC: '2', ACC: '1', BBB: '2', BBC: '2', BCC: '1', CCC: '1' });
+  eq(SL.comboKey(['B', 'A', 'A']), 'AAB'); eq(SL.comboKey(['A', '', 'A']), ''); eq(SL.comboKey(['A', '/', 'A']), '');
+  eq(ctx.combosOf_(3), SL.combosOf(3), 'サーバーと画面で同じ組み合わせ');
+});
+run('L10 評価の基準（A は ○%以上・C は ○%未満）をクラス×学期で変えると、その場で変わる', () => {
+  const cd = cdOf();
+  eq(SL.termEval(cd, koku, 'a', '1学期').kanten[0].auto, 'A', '90% は 80 以上で A');
+  cd.criteria = { '国語|1学期': { kanten: { '知識・技能': { a: 95, b: 60 } }, unit: { a: 95, b: 60 } } };
+  eq(SL.termEval(cd, koku, 'a', '1学期').kanten[0].auto, 'B', '95 以上でないので B');
+  eq(SL.testResult(cd, koku, cd.tests[0], 'a').eval, 'B', 'テストの評価も単元の基準で');
+  eq(SL.termEval(cd, koku, 'a', '2学期').kanten[0].auto, 'A', 'ほかの学期は変わらない');
+});
+run('L11 学年のほかのクラスの人数（名前なしの点数から）', () => {
+  const peer = { label: '3年2組', n: 3, tests: [
+    { subject: '国語', term: '1学期', name: 'A', points: { '知識・技能': 50, '漢字': 50, '思考・判断・表現': 100 }, rows: [{ '知識・技能': 50, '漢字': 50, '思考・判断・表現': 100 }, { '知識・技能': 30, '漢字': 30, '思考・判断・表現': 50 }, null] }] };
+  const crit = SL.criteriaFor(cdOf(), koku, '1学期');
+  const c = SL.peerCounts(peer, koku, '1学期', crit);
+  eq(c.kanten['知識・技能'], { A: 1, B: 1, C: 0 }); eq(c.kanten['思考・判断・表現'], { A: 1, B: 0, C: 1 }); eq(c.tests.A, { A: 1, B: 0, C: 1 });
 });
 run('L04 1年間（要録）: 3学期そろった観点だけ、組み合わせ表で出す', () => {
   const cd = cdOf();

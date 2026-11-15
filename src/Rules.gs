@@ -81,8 +81,8 @@ function validateGradeSubjects_(subjects) {
       var out = { label: label, gg: gg, test: k.test === true };
       if (out.test) {
         out.a = checkInt_(k.a, 1, 100, 'Aの基準');
-        out.b = checkInt_(k.b, 0, 100, 'Bの基準');
-        if (out.b >= out.a) throw appError_(name + '「' + label + '」のBの基準は、Aより小さくしてください。');
+        out.b = checkInt_(k.b, 0, 100, 'Cの基準');
+        if (out.b >= out.a) throw appError_(name + '「' + label + '」の「C になる %」は、「A になる %」より小さくしてください。');
       }
       if (k.into) out.into = String(k.into);
       return out;
@@ -95,7 +95,7 @@ function validateGradeSubjects_(subjects) {
     });
     if (!kanten.some(function (k) { return !k.into; })) throw appError_(name + 'に観点を入れてください。');
     checkObject_(s.total);
-    var total = { a: checkInt_(s.total.a, 1, 100, 'Aの基準'), b: checkInt_(s.total.b, 0, 100, 'Bの基準'),
+    var total = { a: checkInt_(s.total.a, 1, 100, 'Aの基準'), b: checkInt_(s.total.b, 0, 100, 'Cの基準'),
       r3: Number(s.total.r3), r2: Number(s.total.r2) };
     if (!(total.r3 > total.r2 && total.r2 >= 1 && total.r3 <= 3)) throw appError_(name + 'の評定の基準が正しくありません（1〜3で、評定3の基準を大きく）。');
     return { name: name, kanten: kanten, total: total, hyoteiTerm: s.hyoteiTerm === true, hyoteiYear: s.hyoteiYear === true };
@@ -276,4 +276,48 @@ function parseRosterMaster_(stuValues, staffValues, schoolId, schoolName, at) {
       status: isActiveStatus_(r[ti.status], STAFF_ACTIVE_STATUS) ? 'active' : String(r[ti.status] || '').trim(), importedAt: at });
   });
   return { roster: roster, staff: staff };
+}
+
+// ================= 評価の基準・評定の表 =================
+
+/** 評価の基準の検査。input = { kanten: { 観点: {a, b} }, unit: {a, b} }。a = A になる %（以上）、b = C になる %（未満）。 */
+function validateCriteria_(input, subjectConf) {
+  checkObject_(input);
+  function pair(v, what) {
+    checkObject_(v);
+    var a = checkInt_(v.a, 1, 100, what + 'のA'), b = checkInt_(v.b, 0, 100, what + 'のC');
+    if (b >= a) throw appError_(what + 'の「C になる %」は、「A になる %」より小さくしてください。');
+    return { a: a, b: b };
+  }
+  var allowed = subjectConf.kanten.filter(function (k) { return k.test && !k.into; }).map(function (k) { return k.label; });
+  var kanten = {};
+  Object.keys(checkObject_(input.kanten || {}) || {}).forEach(function (l) {
+    if (allowed.indexOf(l) === -1) throw appError_('「' + l + '」は、この教科でテストの点をつける観点ではありません。');
+    kanten[l] = pair(input.kanten[l], l);
+  });
+  return { kanten: kanten, unit: pair(input.unit, 'テストの評価') };
+}
+
+/** 観点が n 個のときの組み合わせ（並びは関係なし）。Logic.html の SL.combosOf と同じ。 */
+function combosOf_(n) {
+  var out = [], abc = ['A', 'B', 'C'];
+  (function walk(prefix, from) {
+    if (prefix.length === n) { out.push(prefix); return; }
+    for (var i = from; i < 3; i++) walk(prefix + abc[i], i);
+  })('', 0);
+  return out;
+}
+
+/** 評定の表の検査。rule = { AAA: '3', AAB: '2', ... }（その教科の観点の数の組み合わせが全部そろっていること）。 */
+function validateHyoteiRule_(rule, subjectConf) {
+  checkObject_(rule);
+  var n = subjectConf.kanten.filter(function (k) { return !k.into; }).length;
+  var out = {};
+  combosOf_(n).forEach(function (k) {
+    var v = toHalf_(rule[k]);
+    if (!/^[1-3]$/.test(v)) throw appError_('評定の表の「' + k + '」に 1・2・3 のどれかを入れてください。');
+    out[k] = v;
+  });
+  if (Object.keys(rule).some(function (k) { return !(k in out); })) throw appError_('評定の表の形が正しくありません。');
+  return out;
 }
