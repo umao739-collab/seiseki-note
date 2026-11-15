@@ -38,7 +38,7 @@ run('S01 公開関数（末尾 _ なし）は PUBLIC / ADMIN / ENTRY の一覧�
   eq(pub, ctx.PUBLIC_FUNCTIONS.concat(ctx.ADMIN_FUNCTIONS, ctx.ENTRY_FUNCTIONS).sort());
 });
 run('S02 公開関数は guard_ → getContext_ の順で始まる', () => {
-  const code = read('Code.gs');
+  const code = gsFiles.map(read).join('\n');
   ctx.PUBLIC_FUNCTIONS.forEach((n) => {
     ok(new RegExp('function ' + n + '\\([^)]*\\) \\{\\n  return guard_\\(function \\(\\) \\{\\n    (var ctx = getContext_\\(actingAs\\);|requireAdmin_\\(getContext_\\(actingAs\\)\\);)').test(code), n);
   });
@@ -307,6 +307,33 @@ run('L13 学級全員分の AI の文（名前・番号・点数なし）と返�
   ok(!/\d+(\.\d+)?%/.test(t), '% が入っている');
   const got = SL.parseAiReply('はい、書きます。\n\n**【児童01】**\n国語ではよく理解しています。\n\n［児童０２］：算数もがんばっています。\n【児童9】\n');
   eq(got, { 0: '国語ではよく理解しています。', 1: '算数もがんばっています。' });
+});
+
+run('P01 SMILE から取りこむ: 見出しから読み、番号と名前で子どもを合わせる', () => {
+  const W = 30, blank = () => Array(W).fill('');
+  const rows = []; for (let i = 0; i < 70; i++) rows.push(blank());
+  const set = (r, c, v) => { rows[r][c] = v; };
+  set(3, 1, '【1学期】'); set(3, 7, 'A='); set(3, 8, '95'); set(4, 7, 'B='); set(4, 8, '60');
+  set(5, 1, '単元名／観点'); set(5, 3, 'つぼみ'); set(5, 10, 'たしかめよう');
+  ['思考・判断・表現', '知識・技能', '漢字', '言葉', '単元合計', '単元到達率', '単元評価'].forEach((h, i) => { set(6, 3 + i, h); set(6, 10 + i, h); });
+  set(7, 3, '100'); set(7, 4, '100'); set(7, 6, '100'); set(7, 11, '50');
+  set(8, 1, '学級平均');
+  set(9, 3, '90'); set(9, 4, '８０'); set(9, 6, '70'); set(9, 11, '40');
+  set(10, 3, '40'); set(10, 4, '50');
+  set(11, 3, '30'); set(11, 4, '30');
+  const subj = ctx.parseSubject_('国語', rows, 3);
+  const mrows = []; for (let i = 0; i < 60; i++) mrows.push(Array(11).fill(''));
+  mrows[0][1] = 'SMILE スプレッドシート版'; mrows[0][4] = '3学期制'; mrows[0][5] = '3年'; mrows[0][7] = '１';
+  mrows[13][1] = '№'; mrows[13][2] = '名前';
+  mrows[14][1] = '1'; mrows[14][2] = 'みほん　いち'; mrows[15][1] = '2'; mrows[15][2] = 'みほん に'; mrows[16][1] = '3'; mrows[16][2] = 'ちがう なまえ';
+  const menu = ctx.parseMenu_(mrows);
+  const roster = [{ email: 'a@example.com', number: 1, name: 'みほん いち' }, { email: 'b@example.com', number: 2, name: 'みほん に' }, { email: 'c@example.com', number: 3, name: 'ほんとう の名前' }];
+  const plan = ctx.smilePlan_(menu, [subj], '3-1', roster, g3, ['1学期', '2学期', '3学期']);
+  eq(plan.tests.map((t) => [t.term, t.name, t.points]), [['1学期', 'つぼみ', { '思考・判断・表現': 100, '知識・技能': 100, '言葉': 100 }], ['1学期', 'たしかめよう', { '知識・技能': 50 }]]);
+  eq(plan.tests[0].scores, { 'a@example.com': { '思考・判断・表現': 90, '知識・技能': 80, '言葉': 70 }, 'b@example.com': { '思考・判断・表現': 40, '知識・技能': 50 } });
+  eq(plan.students.matched, 2); eq(plan.students.mismatch.map((x) => x.no), [3], '名前が合わない子には入れない');
+  eq(plan.thresholds['国語|1学期'], { a: 95, b: 60 });
+  throws(() => ctx.smilePlan_(menu, [subj], '3-2', roster, g3, ['1学期']), /3年1組/);
 });
 
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');

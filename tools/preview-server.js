@@ -140,6 +140,14 @@
       targets.forEach(function (k) { var t = cls(a, k); if (term === '評定') hyoteiRules[t + '|' + subject] = v; else criteria[[t, subject, term].join('|')] = v; });
       return { copied: targets.map(classLabel_) };
     },
+    previewSmileImport: function (ck, url, actingAs) {
+      var a = actor(actingAs); cls(a, ck);
+      if (!sheetIdFromUrl_(url)) err('スプレッドシートのURLではないようです。SMILE ファイルのリンクをそのまま貼ってください。');
+      return { label: classLabel_(ck), tests: 9, scores: 250, thresholds: 2, skipped: ['国語「たしかめよう①」の観点「主体的に学習に取り組む態度」（この教科の観点にありません）'],
+        subjects: [{ name: '国語', terms: [{ term: '1学期', tests: 5 }] }, { name: '算数', terms: [{ term: '1学期', tests: 4 }] }],
+        students: { smile: 28, matched: 27, mismatch: [{ no: 12, smileName: 'すずらん さきこ', rosterName: 'すずらん さき' }], missing: [] } };
+    },
+    importSmile: function (ck, url, withCrit, actingAs) { var a = actor(actingAs); cls(a, ck); return { tests: 9, scores: 243, students: 27 }; },
     saveTests: function (ck, subject, term, list, actingAs) {
       var a = actor(actingAs); var c = cls(a, ck);
       var sub = gradeSubjects[gradeOf_(c)].filter(function (s) { return s.name === subject; })[0];

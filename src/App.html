@@ -413,7 +413,54 @@
       h('div', { class: 'say', style: { marginBottom: '14px' } }, pencil(58, '#F2C230', -20), h('div', { class: 'bubble small' },
         '学期ごとに、テストの名前と、観点ごとの配点を登録します。配点が空の観点は、そのテストでは使いません。',
         tk.some(function (k) { return k.into; }) ? h('div', { class: 'muted' }, '「' + tk.filter(function (k) { return k.into; }).map(function (k) { return k.label; }).join('・') + '」の点は「' + tk.filter(function (k) { return k.into; })[0].into + '」の評価に入ります。') : null)),
+      smileImportCard(),
       box);
+  }
+
+  // ---------- SMILE から取りこむ（移しかえ） ----------
+  function smileImportCard() {
+    var cd = S.cd;
+    var url = h('input', { class: 'text', type: 'url', style: { flex: '1', minWidth: '260px' }, 'aria-label': 'SMILE ファイルのリンク', placeholder: 'SMILE スプレッドシートのリンク（ブラウザの上の URL）' });
+    var result = h('div');
+    var withCrit = false;
+    function showPreview(r, link) {
+      clear(result);
+      var st = r.students;
+      result.appendChild(h('div', { class: 'smile-pre' },
+        h('p', null, h('b', null, r.label), ' の SMILE ファイルです。　テスト ', h('b', null, r.tests), '・点数 ', h('b', null, r.scores), '人ぶん（のべ）を取りこみます。'),
+        h('ul', { class: 'small' }, r.subjects.map(function (x) {
+          return h('li', null, h('b', null, x.name), '：' + x.terms.map(function (t) { return t.term + ' ' + t.tests + 'テスト'; }).join('・'));
+        })),
+        h('p', { class: 'small' }, '子ども：SMILE ' + st.smile + '人のうち、名簿と番号・名前が合った ', h('b', null, st.matched), '人に入れます。'),
+        st.mismatch.length ? h('div', { class: 'note warm small' }, h('b', null, '名前が合わない子（この子には入れません）'),
+          h('ul', null, st.mismatch.map(function (x) { return h('li', null, x.no + '番　SMILE：' + x.smileName + '　／　名簿：' + x.rosterName); })),
+          'SMILE の名簿を直してから、もう一度読みこむと入ります。') : null,
+        st.missing.length ? h('div', { class: 'note warm small' }, h('b', null, 'アプリの名簿にいない番号（入れません）'),
+          h('div', null, st.missing.map(function (x) { return x.no + '番 ' + x.smileName; }).join('、'))) : null,
+        r.skipped.length ? h('details', { class: 'small' }, h('summary', null, '取りこまないもの（' + r.skipped.length + '）'), h('ul', null, r.skipped.map(function (x) { return h('li', null, x); }))) : null,
+        r.thresholds ? h('div', { style: { margin: '8px 0' } }, h('label', { class: 'check' }, h('input', { type: 'checkbox', onchange: function (e) { withCrit = e.target.checked; } }),
+          'SMILE の A・B の基準も「評価の基準」に入れる（A になる %・C になる % として）')) : null,
+        h('p', { class: 'muted small' }, '同じ教科・学期に同じ名前のテストがあるときは、配点をそろえて点数を上書きします。アプリにしかないテストと点数は消しません。'),
+        h('div', { class: 'row' }, h('span', { class: 'spacer' }),
+          h('button', { class: 'btn wakaba', onclick: function (e) {
+            e.target.disabled = true; e.target.textContent = '取りこんでいます…';
+            call('importSmile', cd.classKey, link, withCrit).then(function (x) {
+              toast('取りこみました（テスト ' + x.tests + '・' + x.students + '人ぶんの点数）');
+              return reloadClass();
+            }).catch(function (err) { e.target.disabled = false; e.target.textContent = '📥 取りこむ'; fail(err); });
+          } }, '📥 取りこむ'))));
+    }
+    return h('details', { class: 'card crit-card', style: { marginBottom: '14px' } },
+      h('summary', null, h('span', { class: 'wash sora' }, '📥 SMILE スプレッドシートから取りこむ'), h('span', { class: 'muted small' }, '　これまでの SMILE のテストと点数を、このクラスに移します')),
+      h('div', { class: 'row' }, url, h('button', { class: 'btn sora', onclick: function (e) {
+        var link = url.value.trim();
+        if (!link) { toast('SMILE ファイルのリンクを貼ってください', true); return; }
+        e.target.disabled = true; clear(result); result.appendChild(h('p', { class: 'muted' }, '読んでいます…（教科が多いと少し時間がかかります）'));
+        call('previewSmileImport', cd.classKey, link).then(function (r) { e.target.disabled = false; showPreview(r, link); })
+          .catch(function (err) { e.target.disabled = false; clear(result); fail(err); });
+      } }, '読みこむ（中身を見る）')),
+      h('p', { class: 'muted small' }, '全教科・全学期のテスト（単元名・配点）と点数をまとめて取りこみます。まず「読みこむ」で中身をたしかめてから、「取りこむ」を押してください。'),
+      result);
   }
 
   // ---------- 評価の基準（担任が決める・その場で反映） ----------
