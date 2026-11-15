@@ -140,7 +140,13 @@ function parseSubject_(name, values, nStudents) {
 /** 時期の並び（1学期→2学期→3学期／前期→後期）。 */
 
 /** 名前の空白をのぞいてくらべる。 */
-function bareName_(s) { return String(s || '').replace(/[\s　]/g, ''); }
+var NAME_VARIANTS_ = { '髙': '高', '﨑': '崎', '嵜': '崎', '𠮷': '吉', '德': '徳', '濵': '浜', '濱': '浜', '邊': '辺', '邉': '辺', '齋': '斉', '齊': '斉', '斎': '斉', '櫻': '桜', '澤': '沢', '廣': '広', '國': '国', '龍': '竜', '眞': '真', '瀨': '瀬', '惠': '恵', '槇': '槙', '冨': '富', '條': '条', '藪': '薮', '﨔': '欅' };
+function bareName_(s) {
+  var t = String(s || '');
+  if (t.normalize) t = t.normalize('NFKC');
+  t = t.replace(/[\s　・･]/g, '');
+  return Array.from ? Array.from(t).map(function (ch) { return NAME_VARIANTS_[ch] || ch; }).join('') : t;
+}
 
 /**
  * 読んだ SMILE の中身から、取りこむ計画を作る（純粋関数）。
@@ -153,15 +159,31 @@ function smilePlan_(menu, parsed, classKey, roster, subjects, terms) {
   var key = normClassKey_(g + '-' + c);
   if (!key) throw appError_('SMILE ファイルの「メニュー」に、学年・組が見つかりませんでした。');
   if (key !== classKey) throw appError_('この SMILE ファイルは「' + classLabel_(key) + '」のものです。' + classLabel_(classKey) + 'には取りこめません。');
-  var byNo = {};
-  roster.forEach(function (r) { byNo[Number(r.number)] = r; });
-  var map = {}, mismatch = [], missing = [], matched = 0;
+  // 名前で照らし合わせる（転校などで番号がずれても合うように）。同じ名前が2人いるときだけ番号で決める。
+  // 同じ名前が何人かいるときは、どちらも番号の小さい順に1人ずつ合わせる（番号がずれても順番は変わらないため）。
+  var byName = {}, smileCount = {}, smileSeen = {}, used = {};
+  roster.slice().sort(function (a, b) { return Number(a.number) - Number(b.number); })
+    .forEach(function (r) { var k = bareName_(r.name); (byName[k] = byName[k] || []).push(r); });
+  menu.students.forEach(function (st) { var k = bareName_(st.name); smileCount[k] = (smileCount[k] || 0) + 1; });
+  var map = {}, mismatch = [], missing = [], moved = [], left = [], matched = 0;
   menu.students.forEach(function (st) {
-    var r = byNo[Number(st.no)];
-    if (!r) { missing.push({ no: st.no, smileName: st.name }); return; }
-    if (bareName_(r.name) !== bareName_(st.name)) { mismatch.push({ no: st.no, smileName: st.name, rosterName: r.name }); return; }
+    var k = bareName_(st.name), cands = byName[k] || [], r = null;
+    var nth = smileSeen[k] = (smileSeen[k] || 0) + 1;
+    if (cands.length === 1 && smileCount[k] === 1) r = cands[0];
+    else if (cands.length > 0 && cands.length === smileCount[k]) r = cands[nth - 1];
+    else if (cands.length > 0) r = cands.filter(function (x) { return Number(x.number) === Number(st.no); })[0] || null;
+    if (r && used[r.email]) r = null;
+    if (!r) { left.push(st); return; }
+    used[r.email] = true;
+    if (Number(r.number) !== Number(st.no)) moved.push({ no: st.no, smileName: st.name, rosterNo: r.number });
     map[st.idx] = r.email;
     matched++;
+  });
+  // 名前で合わなかった子：同じ番号の名簿の子もまだ合っていなければ「名前が合わない」、それ以外は「名簿にいない」（転校など）。
+  left.forEach(function (st) {
+    var same = roster.filter(function (x) { return Number(x.number) === Number(st.no) && !used[x.email]; })[0];
+    if (same) mismatch.push({ no: st.no, smileName: st.name, rosterName: same.name });
+    else missing.push({ no: st.no, smileName: st.name });
   });
   var tests = [], skipped = [], thresholds = {};
   parsed.forEach(function (ps) {
@@ -202,7 +224,7 @@ function smilePlan_(menu, parsed, classKey, roster, subjects, terms) {
   });
   return {
     label: classLabel_(key), tests: tests, thresholds: thresholds,
-    students: { smile: menu.students.length, matched: matched, mismatch: mismatch, missing: missing },
+    students: { smile: menu.students.length, matched: matched, mismatch: mismatch, missing: missing, moved: moved },
     skipped: skipped
   };
 }

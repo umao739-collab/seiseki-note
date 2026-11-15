@@ -336,5 +336,19 @@ run('P01 SMILE から取りこむ: 見出しから読み、番号と名前で子
   throws(() => ctx.smilePlan_(menu, [subj], '3-2', roster, g3, ['1学期']), /3年1組/);
 });
 
+run('P02 SMILE 取りこみ: 転校で番号がずれても名前で合わせる・字の形のちがいも同じ', () => {
+  const mrows = []; for (let i = 0; i < 60; i++) mrows.push(Array(11).fill(''));
+  mrows[0][5] = '3年'; mrows[0][7] = '1'; mrows[13][1] = '№'; mrows[13][2] = '名前';
+  [['1', 'あお いち'], ['2', 'てんこう した'], ['3', '髙﨑　さん'], ['4', 'ＡＢ　よん'], ['5', 'おなじ なまえ'], ['6', 'おなじ なまえ']].forEach((x, i) => { mrows[14 + i][1] = x[0]; mrows[14 + i][2] = x[1]; });
+  const menu = ctx.parseMenu_(mrows);
+  const roster = [{ email: 'a@x', number: 1, name: 'あお いち' }, { email: 'c@x', number: 2, name: '高崎 さん' }, { email: 'd@x', number: 3, name: 'AB よん' },
+    { email: 'e@x', number: 4, name: 'おなじ なまえ' }, { email: 'f@x', number: 5, name: 'おなじ なまえ' }];
+  const plan = ctx.smilePlan_(menu, [], '3-1', roster, g3, ['1学期']);
+  eq(plan.students.matched, 5);
+  eq(plan.students.mismatch, []);
+  eq(plan.students.missing.map((x) => x.smileName), ['てんこう した'], '転校した子だけ入れない');
+  eq(plan.students.moved.map((x) => [x.no, x.rosterNo]), [[3, 2], [4, 3], [5, 4], [6, 5]]);
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);
