@@ -171,9 +171,10 @@ function validateManualChanges_(changes, students, subjects, terms) {
     var isHy = field === '評定';
     if (!isHy && !sub.kanten.some(function (k) { return k.label === field && !k.into; })) throw appError_('この教科の観点ではありません。');
     var v = toHalf_(c.value).toUpperCase();
-    if (v === '◎') v = 'A'; else if (v === '○' || v === '〇') v = 'B'; else if (v === '△') v = 'C'; else if (v === '／') v = '/';
+    if (v === '◎') v = 'A'; else if (v === '○' || v === '〇') v = 'B'; else if (v === '△') v = 'C';
+    else if (['／', '-', '－', '‐', 'ー', '―', '−', '–', '—'].indexOf(v) !== -1) v = '/';
     var ok = isHy ? /^([1-3]|\/)?$/.test(v) : /^([ABC]|\/)?$/.test(v);
-    if (!ok) throw appError_(isHy ? '評定は 1・2・3 か / にしてください。' : '評価は A・B・C か / にしてください。');
+    if (!ok) throw appError_(isHy ? '評定は 1・2・3 か ‐（評価できない）にしてください。' : '評価は A・B・C か ‐（評価できない）にしてください。');
     return { studentEmail: e, subject: sub.name, term: term, field: field, value: v };
   });
 }

@@ -262,7 +262,7 @@
   // ================= クラス =================
   var CLASS_TABS = [
     ['tests', '📚', 'テストの登録', 't1'], ['scores', '✏️', '点数を入れる', 't2'], ['term', '🌸', '学期の成績', 't3'],
-    ['year', '📖', '要録（1年間）', 't4'], ['gg', '📋', 'GGに貼る', 't5'], ['check', '🔍', '入れわすれ', 't6']
+    ['year', '📖', '要録（1年間）', 't4'], ['kohyo', '📄', '個票・所見', 't5']
   ];
   function viewClass() {
     var cd = S.cd;
@@ -278,8 +278,8 @@
     })));
     var page = h('div', { class: 'page' });
     S.onSaved = null;
-    fixTerm(S.tab === 'gg' || S.tab === 'year');
-    var v = { tests: viewTests, scores: viewScores, term: viewTerm, year: viewYear, gg: viewGG, check: viewCheck }[S.tab] || viewScores;
+    fixTerm(S.tab === 'kohyo' || S.tab === 'year');
+    var v = { tests: viewTests, scores: viewScores, term: viewTerm, year: viewYear, kohyo: viewKohyo }[S.tab] || viewScores;
     page.appendChild(v());
     wrap.appendChild(page);
     return wrap;
@@ -637,22 +637,15 @@
     var cd = S.cd, sub = subjectOf();
     var isYear = term === YEAR;
     var ks = SL.evalKanten(sub);
-    // 左から GG の「教科等」と同じ並び（知・思・主・評定）。範囲をえらんでコピーすれば、そのまま GG に貼れる。
-    // 到達率・学期ごとの評価は、そのあと（右）に見るためだけの列として置く
+    // GG の「教科等」と同じ並び（知・思・主・評定）。「GG用にコピー」で、そのまま GG に貼れる
     var cols = [];
     ks.forEach(function (k, i) {
       var kc = kClass(k.label, k.gg);
-      cols.push({ kind: 'eval', k: k, label: (k.gg || '') + (k.test ? '' : '（入れる）'), group: 'GG に貼る並び', groupClass: 'k-gg', cls: kc + (i === 0 ? ' gsep' : ''),
-        title: k.label, editable: function () { return true; } });
+      cols.push({ kind: 'eval', k: k, label: k.label, cls: kc + (i === 0 ? ' gsep' : ''), width: 120,
+        title: k.label + (k.test ? '' : '（先生が入れる）'), editable: function () { return true; } });
     });
     var useHy = isYear ? sub.hyoteiYear : sub.hyoteiTerm;
-    if (useHy) cols.push({ kind: 'hy', label: '評定', group: 'GG に貼る並び', groupClass: 'k-gg', cls: 'k-hy', editable: function () { return true; } });
-    ks.forEach(function (k, i) {
-      var kc = kClass(k.label, k.gg);
-      var short2 = short(k.label);
-      if (!isYear && k.test) cols.push({ kind: 'rate', k: k, label: short2 + ' %', group: '見るだけ', groupClass: '', cls: kc + (i === 0 ? ' gsep' : ''), title: k.label + '：学期のテストを合わせた到達率' });
-      if (isYear) cols.push({ kind: 'seq', k: k, label: short2 + ' ' + cd.terms.map(function (t) { return t.charAt(0); }).join('・'), group: '学期ごとの評価（見るだけ）', groupClass: '', cls: kc + (i === 0 ? ' gsep' : ''), title: k.label + '：学期ごとの評価' });
-    });
+    if (useHy) cols.push({ kind: 'hy', label: '評定', cls: 'k-hy', width: 80, editable: function () { return true; } });
     var rows = cd.students.map(function (st) { return { no: st.no, name: st.name, key: st.key }; });
     var cache = {};
     function ev(r) { return cache[r] || (cache[r] = SL.evalFor(cd, sub, rows[r].key, term)); }
@@ -667,11 +660,11 @@
       },
       view: function (r, c) {
         var col = cols[c];
-        if (col.kind === 'rate') { var k0 = kOf(r, col); return { text: pct(k0.rate) }; }
-        if (col.kind === 'seq') { var k1 = kOf(r, col); return { text: k1.terms.map(function (x) { return x || '・'; }).join(' ') }; }
         var x = col.kind === 'hy' ? ev(r).hyotei : kOf(r, col);
-        var title = x.manual ? '先生が入れた値' + (x.auto ? '（計算では ' + x.auto + '）' : '') : (x.auto ? '計算で出した値' : '');
-        return { text: x.final, copy: x.final, cls: (x.final ? 'v' + x.final : '') + (x.manual && col.k && col.k.test || (x.manual && col.kind === 'hy') ? ' manual' : '') + (x.final === '/' ? ' slash' : ''), title: title };
+        var title = x.manual ? '先生が入れた値' + (x.auto ? '（計算では ' + (x.auto === '/' ? '‐' : x.auto) + '）' : '') : (x.auto ? '計算で出した値' : '');
+        if (x.rate !== undefined && x.rate !== null) title += '（到達率 ' + pct(x.rate) + '%）';
+        if (x.terms) title += '（' + cd.terms.map(function (t, i) { return t + ' ' + (x.terms[i] === '/' ? '‐' : x.terms[i] || '・'); }).join('・') + '）';
+        return { text: x.final === '/' ? '‐' : x.final, copy: x.final, cls: (x.final ? 'v' + x.final : '') + (x.manual && col.k && col.k.test || (x.manual && col.kind === 'hy') ? ' manual' : '') + (x.final === '/' ? ' slash' : ''), title: title };
       },
       normalize: function (r, c, input) { return cols[c].kind === 'hy' ? SL.normHyotei(input) : SL.normAbc(input); },
       onChange: function (changes) {
@@ -748,6 +741,7 @@
         h('br'), '列の並びは GG の「教科等」と同じ（知・思・主' + (sub.hyoteiTerm ? '・評定' : '') + '）なので、範囲をえらんでコピーし、GG の「知」のマスにそのまま貼れます。')),
       criteriaPanel(sub, S.term, refresh),
       sub.hyoteiTerm ? hyoteiPanel(sub, S.term, refresh) : null,
+      ggCopyBar(sub, S.term),
       h('div', { class: 'term-layout' }, h('div', { class: 'term-main' }, grid.el, gridHelp()), summary.el),
       saveBar());
   }
@@ -761,6 +755,7 @@
         sub.hyoteiYear ? h('span', null, h('br'), '評定は、下の「評定の表」で決めます。') : null,
         h('div', null, h('button', { class: 'linkbtn', onclick: showCombo }, '学期→1年間の組み合わせ表を見る')))),
       sub.hyoteiYear ? hyoteiPanel(sub, YEAR, refresh) : null,
+      ggCopyBar(sub, YEAR),
       grid.el, gridHelp(), saveBar());
   }
   function showCombo() {
@@ -772,41 +767,19 @@
     ask('組み合わせ表', h('div', { style: { maxHeight: '50vh', overflow: 'auto' } }, table), [['とじる', true, 'plain']]);
   }
 
-  // ---------- GGに貼る ----------
-  function viewGG() {
-    var cd = S.cd, sub = subjectOf();
-    var gcols = SL.ggColumns(cd, sub, S.term);
-    var data = SL.ggRows(cd, sub, S.term);
-    var empty = 0;
-    data.forEach(function (r) { r.cells.forEach(function (v) { if (!v) empty++; }); });
-    var cols = gcols.map(function (c) { return { label: c.label, cls: kClass(c.kanten, c.label) }; });
-    var grid = Grid.create({
-      columns: cols, rows: data.map(function (r) { return { no: r.no, name: r.name }; }),
-      get: function (r, c) { return data[r].cells[c]; },
-      view: function (r, c) { var v = data[r].cells[c]; return { text: v, cls: v ? 'v' + v : '' }; },
-      normalize: function () { return null; }, onChange: function () {}, notify: toast
-    });
-    function copyNow(withNames) {
-      var tsv = withNames ? SL.toTsv(data.map(function (r) { return [r.no, r.name].concat(r.cells); })) : grid.copyAll();
-      copyText(tsv, withNames ? '名前つきでコピーしました（たしかめ用）' : 'GG用にコピーしました（' + data.length + '人 × ' + gcols.length + '列）');
-    }
-    return h('div', null, pickers({ year: true }),
-      h('div', { class: 'grid2', style: { marginBottom: '14px' } },
-        h('div', { class: 'card' }, h('h2', null, h('span', { class: 'wash sora' }, 'GGへの貼りつけかた')),
-          h('ol', { class: 'steps small' },
-            h('li', null, 'GGで「児童生徒」＞成績「通知表」＞「教科等」をひらく'),
-            h('li', null, '「学期」「学年」「教科等」を、ここと同じにする（' + S.term + '・' + sub.name + '）'),
-            h('li', null, 'クラスをしぼりこみ、番号順になっているか確かめる'),
-            h('li', null, '下の「GG用にコピー」をおす'),
-            h('li', null, 'GGで、いちばん上の子の「' + (gcols[0] ? gcols[0].label : '知') + '」のマスをクリックして Ctrl+V（⌘V）'),
-            h('li', null, 'GGの「保存」をおす（青い保存は、保存できる合図です）'))),
-        h('div', { class: 'card' }, h('h2', null, h('span', { class: 'wash wakaba' }, 'コピーする')),
-          h('p', { class: 'small' }, '列: ', gcols.map(function (c) { return c.label; }).join('・'), '　（名前は入りません）'),
-          empty ? h('div', { class: 'note warm small' }, '空いているマスが ' + empty + 'か所 あります。空のまま貼ると、GGのそのマスは空になります。') : h('div', { class: 'note small' }, '🌱 ぜんぶのマスがうまっています'),
-          h('div', { class: 'row', style: { marginTop: '12px' } },
-            h('button', { class: 'btn big wakaba', onclick: function () { copyNow(false); } }, '📋 GG用にコピー'),
-            h('button', { class: 'btn plain', onclick: function () { copyNow(true); } }, '名前つきでコピー')))),
-      grid.el, h('div', { class: 'gridhelp' }, h('span', null, 'この表は見るだけです。範囲をえらんで Ctrl+C でもコピーできます。直すときは「学期の成績」「要録」のタブで。')));
+  // ---------- GG用にコピー ----------
+  /** 表の上の帯: 「GG用にコピー」（名前なし・知・思・主・評定の並び・‐ は / にする）。 */
+  function ggCopyBar(sub, term) {
+    var cd = S.cd;
+    return h('div', { class: 'ggbar' },
+      h('button', { class: 'btn big wakaba', onclick: function () {
+        var data = SL.ggRows(cd, sub, term);
+        var empty = 0;
+        data.forEach(function (r) { r.cells.forEach(function (v) { if (!v) empty++; }); });
+        copyText(SL.toTsv(data.map(function (r) { return r.cells; })), 'GG用にコピーしました（' + data.length + '人）' + (empty ? '　空いているマスが ' + empty + 'か所あります' : ''));
+      } }, '📋 GG用にコピー'),
+      h('span', { class: 'small' }, 'GG の「教科等」で ' + (term === YEAR ? '' : term + '・') + sub.name + ' をえらび、いちばん上の子の「知」のマスをクリックして Ctrl+V（⌘V）→「保存」。',
+        h('br'), h('span', { class: 'muted' }, '名前は入りません。‐（評価できない）は GG の「/」で入ります。')));
   }
   function copyText(text, done) {
     function fallback() {
@@ -823,32 +796,188 @@
     else fallback();
   }
 
-  // ---------- 入れわすれ ----------
-  function viewCheck() {
-    var cd = S.cd;
-    var miss = SL.missing(cd);
-    var att = [];
-    cd.subjects.forEach(function (sub) {
-      cd.terms.forEach(function (term) {
-        if (!SL.testsOf(cd, sub.name, term).length) return;
-        SL.evalKanten(sub).filter(function (k) { return !k.test; }).forEach(function (k) {
-          var n = cd.students.filter(function (st) { return !SL.manualOf(cd, st.key, sub.name, term, k.label); }).length;
-          if (n) att.push({ sub: sub.name, term: term, label: k.label, n: n });
-        });
+
+  // ================= 個票・所見 =================
+  var SUBJECT_COLOR = { '国語': '#D9667F', '社会': '#D9822F', '算数': '#2F76B4', '理科': '#3F8A4D', '生活': '#7FA640',
+    '音楽': '#8C6BC2', '図工': '#C99A1E', '家庭': '#C47452', '体育': '#2E9AA8', '外国語': '#5E6FC2' };
+  function colorOf(name) { return SUBJECT_COLOR[name] || '#8C7663'; }
+  var K = { avg: true, shoken: true, length: 'normal', drafts: {}, seeds: {} };
+
+  /** レーダーチャート（教科ごとの到達率。点線は学級平均）。 */
+  function radar(p, showAvg) {
+    var subs = p.subjects.filter(function (x) { return x.rate !== null; });
+    // 教科が2つ以下のときは、教科×観点（国語・知、国語・思 …）を軸にする
+    if (subs.length < 3) {
+      subs = [];
+      p.subjects.forEach(function (sm) {
+        sm.kanten.forEach(function (k) { if (k.rate !== null) subs.push({ name: sm.name, label: sm.name + '・' + SL.shortLabel(k.label).charAt(0), rate: k.rate, classRate: k.classRate }); });
       });
+    }
+    if (subs.length < 3) return h('div', { class: 'muted small radar-none' }, 'テストの結果がもう少しそろうと、レーダーチャートが出ます。');
+    var W = 360, H = 280, cx = 180, cy = 142, R = 96, n = subs.length;
+    // みんな 40% 以上なら、中心を 40% にして差を見やすくする
+    var all = subs.map(function (x) { return x.rate; }).concat(showAvg ? subs.map(function (x) { return x.classRate; }) : []).filter(function (v) { return v !== null && v !== undefined; });
+    var lo = all.length && Math.min.apply(null, all) >= 40 ? 40 : 0;
+    function ang(i) { return -Math.PI / 2 + i * 2 * Math.PI / n; }
+    function pt(i, v) { var a = ang(i); var r = v > 100 ? R * v / 100 : R * Math.max(0, Math.min(100, v || 0) - lo) / (100 - lo); return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; }
+    function poly(vals) { return vals.map(function (v, i) { return pt(i, v).join(','); }).join(' '); }
+    var rings = (lo ? [55, 70, 85, 100] : [20, 40, 60, 80, 100]).map(function (v) {
+      return s('polygon', { points: poly(subs.map(function () { return v; })), fill: v === 100 ? '#FFFDF6' : 'none', stroke: '#D9CFBC', 'stroke-width': v === 100 ? 1.5 : 1, 'stroke-dasharray': v === 100 ? '' : '3 3' });
     });
-    if (!miss.length && !att.length) return h('div', { class: 'empty' }, rabbit(110, 'happy'), h('span', { class: 'title' }, 'ぜんぶ入っています！'), h('p', { class: 'muted' }, 'テストをした単元は、全員の点数が入っています。'));
-    return h('div', { class: 'stack' },
-      miss.length ? h('div', null, h('h2', null, h('span', { class: 'wash' }, 'テストの点が空いている子')), h('div', { class: 'grid2' }, miss.map(function (x) {
-        return h('div', { class: 'card' }, h('div', { class: 'row' }, h('b', null, x.test.subject + '・' + x.test.term), h('span', null, '「' + x.test.name + '」'), h('span', { class: 'spacer' }),
-          h('button', { class: 'linkbtn', onclick: function () { S.subject = x.test.subject; S.term = x.test.term; S.tab = 'scores'; render(); } }, '入れにいく')),
-          h('div', { class: 'muted small' }, cd.students.length + '人中 ' + x.entered + '人 入力ずみ'),
-          h('div', { class: 'pick', style: { marginTop: '6px' } }, x.missing.map(function (st) { return h('span', { class: 'pill', style: { cursor: 'default' } }, st.no + ' ' + st.name); })));
-      }))) : null,
-      att.length ? h('div', null, h('h2', null, h('span', { class: 'wash wakaba' }, '先生が入れる評価が空いているところ')), h('div', { class: 'grid3' }, att.map(function (x) {
-        return h('div', { class: 'card' }, h('b', null, x.sub + '・' + x.term), h('div', { class: 'small' }, x.label), h('div', { class: 'muted small' }, x.n + '人 まだ'),
-          h('button', { class: 'linkbtn', onclick: function () { S.subject = x.sub; S.term = x.term; S.tab = 'term'; render(); } }, '入れにいく'));
-      }))) : null);
+    var axes = subs.map(function (x, i) { var e = pt(i, 100); return s('line', { x1: cx, y1: cy, x2: e[0], y2: e[1], stroke: '#E4DCCB' }); });
+    var labels = subs.map(function (x, i) {
+      var c = Math.cos(ang(i)), sn = Math.sin(ang(i));
+      var e = [cx + (R + 12) * c, cy + (R + 12) * sn + (sn > 0.3 ? 12 : sn < -0.3 ? -2 : 5)];
+      var anchor = c > 0.3 ? 'start' : c < -0.3 ? 'end' : 'middle';
+      return s('text', { x: e[0], y: e[1], 'text-anchor': anchor, 'font-size': x.label ? 12 : 14, 'font-weight': 700, fill: colorOf(x.name) }, x.label || x.name);
+    });
+    var vals = subs.map(function (x, i) { var e = pt(i, x.rate); return s('circle', { cx: e[0], cy: e[1], r: 3.5, fill: '#2F76B4' }); });
+    return h('div', { class: 'radar' },
+      s('svg', { viewBox: '0 0 ' + W + ' ' + H, width: '100%', role: 'img', 'aria-label': '教科ごとの到達率のレーダーチャート' },
+        rings, axes,
+        s('text', { x: cx + 3, y: pt(0, lo ? 70 : 60)[1] - 2, 'font-size': 9, fill: '#A89C8A' }, lo ? '70' : '60'),
+        showAvg ? s('polygon', { points: poly(subs.map(function (x) { return x.classRate; })), fill: 'none', stroke: '#C0661A', 'stroke-width': 2, 'stroke-dasharray': '5 4' }) : null,
+        s('polygon', { points: poly(subs.map(function (x) { return x.rate; })), fill: 'rgba(47,118,180,.22)', stroke: '#2F76B4', 'stroke-width': 2.5, 'stroke-linejoin': 'round' }),
+        vals, labels),
+      h('div', { class: 'legend' }, h('span', null, h('i', { style: { background: '#2F76B4' } }), 'この子'), showAvg ? h('span', null, h('i', { style: { background: '#C0661A' } }), '学級平均（点線）') : null,
+        lo ? h('span', null, '中心は ' + lo + '%') : null));
+  }
+  function evBadge(e, small) { return h('span', { class: 'ev ' + (small ? 'sm ' : '') + (e === 'A' || e === 'B' || e === 'C' ? e : 'none') }, e === '/' ? '‐' : (e || '・')); }
+  function kbar(label, rt, avg, showAvg) {
+    return h('div', { class: 'kbar' }, h('span', { class: 'kl' }, label),
+      h('span', { class: 'ktrack' }, h('span', { class: 'kfill', style: { width: Math.max(0, Math.min(100, rt || 0)) + '%' } }),
+        showAvg && avg !== null && avg !== undefined ? h('span', { class: 'kavg', title: '学級平均 ' + pct(avg) + '%', style: { left: 'calc(' + Math.min(100, avg) + '% - 1px)' } }) : null),
+      h('span', { class: 'kv' }, rt === null || rt === undefined ? '—' : pct(rt) + '%'));
+  }
+  function shokenOf(sk, term) {
+    var k = sk + '|' + term;
+    if (K.drafts[k] !== undefined) return K.drafts[k];
+    var sv = (S.cd.shoken || {})[k];
+    return sv ? sv.text : '';
+  }
+  /** 個票（画面と印刷で同じ形）。 */
+  function kohyoSheet(p) {
+    var cd = S.cd;
+    function li(x) { return h('li', null, h('b', null, x.subject), '「' + SL.shortLabel(x.label) + '」' + (x.unit ? '（' + x.unit + '）' : '')); }
+    var text = K.shoken ? shokenOf(p.key, p.term) : '';
+    return h('div', { class: 'ksheet' },
+      h('div', { class: 'khead' },
+        h('div', null, h('div', { class: 'kribbon' }, '学習のようす'), h('div', { class: 'muted small' }, (p.term === YEAR ? '1年間' : p.term) + '・テストの結果から')),
+        h('div', { class: 'kname' }, h('small', null, cd.label + '　' + p.no + '番'), h('b', null, p.name))),
+      h('div', { class: 'ktop' },
+        radar(p, K.avg),
+        h('div', { class: 'kpoints' },
+          h('div', { class: 'kbox good' }, h('h4', null, '★ とくいなところ'),
+            p.strengths.length ? h('ul', null, p.strengths.map(li)) : h('div', { class: 'small' }, p.best ? p.best.subject + '「' + SL.shortLabel(p.best.label) + '」がよく育っています' : 'これから見つけていこう')),
+          p.growth.length ? h('div', { class: 'kbox up' }, h('h4', null, '↗ のびたところ'), h('ul', null, p.growth.map(function (g) { return h('li', null, h('b', null, g.subject), '（' + g.from + 'より）'); }))) : null,
+          h('div', { class: 'kbox grow' }, h('h4', null, '🌱 のびしろ'),
+            p.challenges.length ? h('ul', null, p.challenges.map(li)) : h('div', { class: 'small' }, 'どの教科も、よくがんばっています')))),
+      h('div', { class: 'ksubs' }, p.subjects.map(function (sm) {
+        var shown = sm.units.slice(0, 8);
+        return h('div', { class: 'kcard' },
+          h('div', { class: 'kch' }, h('span', { class: 'kpill', style: { background: colorOf(sm.name) } }, sm.name),
+            h('span', { class: 'kevs' }, sm.evals.map(function (x) { return h('span', { class: 'kev', title: x.label }, h('small', null, x.gg || ''), evBadge(x.eval, true)); }),
+              sm.hyotei ? h('span', { class: 'kev', title: '評定' }, h('small', null, '評定'), h('b', { class: 'khy' }, sm.hyotei === '/' ? '‐' : sm.hyotei)) : null),
+            h('span', { class: 'krate' }, pct(sm.rate), h('small', null, '%'))),
+          sm.kanten.map(function (k) { return kbar(SL.shortLabel(k.label), k.rate, k.classRate, K.avg); }),
+          h('div', { class: 'kunits' }, shown.map(function (u) {
+            return h('div', null, evBadge(u.eval, true), h('span', { class: 'ku', title: u.name }, (p.term === YEAR ? u.term.charAt(0) + '・' : '') + u.name),
+              u.tag === 'good' ? h('span', { class: 'ktag good' }, '★') : u.tag === 'grow' ? h('span', { class: 'ktag grow' }, '🌱') : u.tag === 'missing' ? h('span', { class: 'ktag miss' }, '未') : null,
+              h('span', { class: 'kur' }, u.rate === null ? '' : pct(u.rate) + '%'));
+          }), sm.units.length > shown.length ? h('div', { class: 'muted small' }, '…ほか ' + (sm.units.length - shown.length) + '単元') : null));
+      })),
+      text ? h('div', { class: 'kmsg' }, h('h4', null, '成績から見たようす'), h('div', { style: { whiteSpace: 'pre-wrap' } }, text)) : null,
+      h('div', { class: 'kfoot' }, h('span', null, K.avg ? '点線・｜は学級平均です' : ''), h('span', null, 'せいせきノート')));
+  }
+  function printSheets(list) {
+    var pr = document.getElementById('print');
+    clear(pr);
+    list.forEach(function (st) { pr.appendChild(kohyoSheet(SL.profile(S.cd, st.key, S.term))); });
+    setTimeout(function () { window.print(); }, 60);
+  }
+  function makeDraft(sk) {
+    var k = sk + '|' + S.term;
+    return SL.shoken(SL.profile(S.cd, sk, S.term), { seed: K.seeds[k] || 0, length: K.length, includeChallenge: true });
+  }
+  function viewKohyo() {
+    var cd = S.cd;
+    var bar = h('div', { class: 'toolbar' }, h('div', { class: 'pick' }, h('span', { class: 'q' }, 'いつ'), cd.terms.concat([YEAR]).map(function (t) {
+      return h('button', { class: 'pill' + (S.term === t ? ' on' : ''), onclick: function () { S.term = t; render(); } }, t);
+    })));
+    if (!cd.students.length) return h('div', null, bar, h('div', { class: 'empty' }, '名簿に子どもがいません。'));
+    if (!S.ksel || !cd.students.some(function (x) { return x.key === S.ksel; })) S.ksel = cd.students[0].key;
+    var st = cd.students.filter(function (x) { return x.key === S.ksel; })[0];
+    var p = SL.profile(cd, st.key, S.term);
+    var key = st.key + '|' + S.term;
+    function dot(x) {
+      var k = x.key + '|' + S.term, sv = (cd.shoken || {})[k];
+      if (K.drafts[k] !== undefined && (!sv || sv.text !== K.drafts[k])) return 'draft';
+      return sv && sv.text ? 'saved' : '';
+    }
+    function move(d) {
+      var i = cd.students.indexOf(st), n = cd.students[Math.max(0, Math.min(cd.students.length - 1, i + d))];
+      S.ksel = n.key; render();
+    }
+    var roster = h('div', { class: 'roster' }, cd.students.map(function (x) {
+      return h('button', { class: S.ksel === x.key ? 'on' : '', onclick: function () { S.ksel = x.key; render(); } },
+        h('span', { class: 'no' }, x.no), h('span', null, x.name), h('span', { class: 'dot ' + dot(x) }));
+    }));
+    var tools = h('div', { class: 'card row', style: { padding: '10px 14px', marginBottom: '12px' } },
+      h('button', { class: 'btn plain', onclick: function () { move(-1); } }, '◀ 前の子'),
+      h('button', { class: 'btn plain', onclick: function () { move(1); } }, '次の子 ▶'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: K.avg, onchange: function (e) { K.avg = e.target.checked; render(); } }), '学級平均も出す'),
+      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: K.shoken, onchange: function (e) { K.shoken = e.target.checked; render(); } }), '所見も入れる'),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'btn sora', onclick: function () { printSheets([st]); } }, '🖨 この子を印刷'),
+      h('button', { class: 'btn', onclick: function () { printSheets(cd.students); } }, '🖨 全員を印刷'));
+
+    // 所見の下書き
+    var target = SL.SHOKEN_TARGET[K.length];
+    var counter = h('span', { class: 'muted small' });
+    var ta = h('textarea', { class: 'text kta', 'aria-label': '所見', maxlength: 800, placeholder: '「✨ 下書きをつくる」をおすと、成績から見た所見の下書きが入ります。そのまま直せます。' });
+    ta.value = shokenOf(st.key, S.term);
+    function upd() { counter.textContent = ta.value.length + '字 ／ 目安 ' + target + '字'; }
+    ta.addEventListener('input', function () { K.drafts[key] = ta.value; upd(); });
+    upd();
+    function setDraft(t) { K.drafts[key] = t; render(); }
+    function saveItems(items, msg) {
+      return call('saveShoken', cd.classKey, items).then(function (r) {
+        items.forEach(function (it) { cd.shoken[it.studentEmail + '|' + it.term] = { text: it.text, at: r.savedAt }; delete K.drafts[it.studentEmail + '|' + it.term]; });
+        toast(msg); render();
+      }).catch(fail);
+    }
+    var sv = (cd.shoken || {})[key];
+    var editor = h('div', { class: 'card', style: { marginTop: '14px' } },
+      h('h2', null, h('span', { class: 'wash sora' }, '所見（成績から見たようす）'), h('span', { class: 'sub' }, st.no + '番 ' + st.name + '・' + S.term)),
+      h('div', { class: 'row', style: { marginBottom: '8px' } },
+        h('div', { class: 'seg' }, [['short', '短め'], ['normal', 'ふつう'], ['long', '長め']].map(function (l) {
+          return h('button', { class: K.length === l[0] ? 'on' : '', onclick: function () { K.length = l[0]; setDraft(makeDraft(st.key)); } }, l[1]);
+        })),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn', onclick: function () { setDraft(makeDraft(st.key)); } }, '✨ 下書きをつくる'),
+        h('button', { class: 'btn plain', onclick: function () { K.seeds[key] = (K.seeds[key] || 0) + 1; setDraft(makeDraft(st.key)); } }, '🔁 別の言い方')),
+      ta,
+      h('div', { class: 'row', style: { marginTop: '6px' } }, counter, h('span', { class: 'spacer' }), sv ? h('span', { class: 'muted small' }, '💾 ' + sv.at + ' に保存') : null),
+      h('div', { class: 'row', style: { marginTop: '10px' } },
+        h('button', { class: 'btn wakaba', onclick: function () { saveItems([{ studentEmail: st.key, term: S.term, text: ta.value }], st.name + 'さんの所見を保存しました'); } }, '💾 保存する'),
+        h('button', { class: 'btn plain', onclick: function () { copyText(ta.value, 'コピーしました'); } }, '📋 コピー'),
+        h('button', { class: 'btn plain', onclick: function () { copyText(SL.aiPrompt(p, { length: K.length, grade: cd.grade + '年' }), 'AIに頼む文をコピーしました（名前・点数は入っていません）'); } }, '🤖 AIに頼む文をコピー')),
+      h('p', { class: 'muted small', style: { marginBottom: 0 } }, '※ 下書きはテストの結果だけをもとにしています。授業中の様子など、先生にしかわからないことを書き足してください。'),
+      h('div', { class: 'row', style: { marginTop: '10px', paddingTop: '10px', borderTop: '2px dashed var(--line)' } },
+        h('span', { class: 'muted small' }, h('span', { class: 'dot saved', style: { display: 'inline-block', marginRight: '4px' } }), '保存ずみ　', h('span', { class: 'dot draft', style: { display: 'inline-block', margin: '0 4px 0 6px' } }), '保存していない下書き'),
+        h('span', { class: 'spacer' }),
+        h('button', { class: 'btn plain', onclick: function () {
+          var n = 0;
+          cd.students.forEach(function (x) { var k = x.key + '|' + S.term; if (K.drafts[k] !== undefined || ((cd.shoken || {})[k] || {}).text) return; K.drafts[k] = makeDraft(x.key); n++; });
+          toast(n ? n + '人ぶんの下書きを作りました（まだ書いていない子だけ）' : 'みんな、もう下書きか保存ずみです'); render();
+        } }, '✨ 全員の下書きをいっきに'),
+        h('button', { class: 'btn wakaba', onclick: function () {
+          var items = [];
+          cd.students.forEach(function (x) { var k = x.key + '|' + S.term; if (K.drafts[k] === undefined) return; var o = (cd.shoken || {})[k]; if (o && o.text === K.drafts[k]) return; items.push({ studentEmail: x.key, term: S.term, text: K.drafts[k] }); });
+          if (!items.length) { toast('保存していない下書きはありません'); return; }
+          saveItems(items, items.length + '人ぶんの所見を保存しました');
+        } }, '💾 下書きをまとめて保存')));
+    return h('div', null, bar, h('div', { class: 'ksplit' }, roster, h('div', null, tools, kohyoSheet(p), editor)));
   }
 
   // ================= 学校の設定（設定担当） =================

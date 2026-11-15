@@ -309,4 +309,75 @@
   .sum-d.up { background: rgba(63, 138, 77, .14); color: #2E6E3A; } .sum-d.down { background: rgba(192, 102, 26, .14); color: #9A4F12; }
   .sum-hy { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 50%; background: #D9C7F0; }
   @media (max-width: 900px) { .term-layout { grid-template-columns: 1fr; } .sum-card { position: static; } }
+  /* ============ 個票 ============ */
+  .ksplit { display: grid; grid-template-columns: 210px 1fr; gap: 14px; align-items: start; }
+  @media (max-width: 800px) { .ksplit { grid-template-columns: 1fr; } .ksplit .roster { max-height: 200px; position: static; } }
+  .roster { background: var(--card); border-radius: 4px; box-shadow: var(--shadow); padding: 8px; max-height: 80vh; overflow-y: auto; position: sticky; top: 8px; }
+  .roster button { display: flex; width: 100%; gap: 8px; align-items: center; border: none; background: none; text-align: left; padding: 6px 10px; border-radius: 8px; cursor: pointer; font-size: 15px; color: var(--ink); }
+  .roster button:hover { background: #F3EEDF; }
+  .roster button.on { background: var(--board); color: var(--chalk); }
+  .roster .no { min-width: 22px; font-weight: 900; color: var(--ink-soft); }
+  .roster button.on .no { color: var(--chalk-soft); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; margin-left: auto; flex: 0 0 auto; background: #E9E2D3; }
+  .dot.saved { background: var(--A); } .dot.draft { background: #E2B530; }
+  .seg { display: inline-flex; background: #F1EBDC; border-radius: 999px; padding: 3px; }
+  .seg button { border: none; background: none; border-radius: 999px; padding: 4px 14px; cursor: pointer; font-weight: 700; color: var(--ink-soft); }
+  .seg button.on { background: #fff; color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.1); }
+  textarea.kta { width: 100%; min-height: 150px; line-height: 1.8; font-size: 16px; resize: vertical; }
+  .ksheet { background: #FFFEFA; border-radius: 3px; box-shadow: var(--shadow); padding: 22px 24px; color: #3A3631; }
+  .khead { display: flex; align-items: flex-end; border-bottom: 3px solid var(--board); padding-bottom: 10px; margin-bottom: 14px; }
+  .kribbon { display: inline-block; background: var(--board); color: var(--chalk); font-family: 'Yomogi', sans-serif; font-size: 20px; padding: 2px 18px; border-radius: 3px; }
+  .kname { margin-left: auto; text-align: right; }
+  .kname small { display: block; color: var(--ink-soft); }
+  .kname b { font-size: 28px; font-weight: 900; }
+  .ktop { display: grid; grid-template-columns: minmax(240px, 320px) 1fr; gap: 16px; align-items: center; margin-bottom: 14px; }
+  @media (max-width: 700px) { .ktop { grid-template-columns: 1fr; } }
+  .radar svg { display: block; max-width: 320px; margin: 0 auto; }
+  .radar .legend { justify-content: center; }
+  .radar-none { padding: 30px 10px; text-align: center; border: 2px dashed var(--line); border-radius: 6px; }
+  .kpoints { display: grid; gap: 10px; }
+  .kbox { border-radius: 6px; padding: 8px 14px; }
+  .kbox h4 { margin: 0 0 4px; font-size: 15px; }
+  .kbox ul { margin: 0; padding-left: 20px; font-size: 14.5px; line-height: 1.7; }
+  .kbox.good { background: #FFF4CF; } .kbox.up { background: #E3F0FB; } .kbox.grow { background: #E7F3DF; }
+  .ksubs { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  @media (max-width: 700px) { .ksubs { grid-template-columns: 1fr; } }
+  .kcard { border: 2px solid var(--line); border-radius: 6px; padding: 10px 12px; break-inside: avoid; }
+  .kch { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .kpill { color: #fff; font-weight: 900; border-radius: 999px; padding: 1px 12px; }
+  .kevs { display: inline-flex; gap: 6px; align-items: center; }
+  .kev { display: inline-flex; flex-direction: column; align-items: center; line-height: 1; }
+  .kev small { font-size: 10px; color: var(--ink-soft); margin-bottom: 1px; }
+  .khy { display: inline-flex; width: 24px; height: 24px; align-items: center; justify-content: center; border-radius: 50%; background: #D9C7F0; font-size: 13px; }
+  .krate { margin-left: auto; font-size: 22px; font-weight: 900; }
+  .krate small { font-size: 12px; }
+  .kbar { display: grid; grid-template-columns: 72px 1fr 44px; gap: 8px; align-items: center; font-size: 13px; margin: 3px 0; }
+  .ktrack { position: relative; height: 12px; background: #EFE8DA; border-radius: 999px; }
+  .kfill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: #6FA8D8; }
+  .kavg { position: absolute; top: -4px; bottom: -4px; width: 3px; border-radius: 2px; background: #C0661A; }
+  .kv { text-align: right; font-weight: 700; }
+  .kunits { margin-top: 6px; border-top: 1px dashed var(--line); padding-top: 4px; }
+  .kunits > div { display: flex; gap: 6px; align-items: center; font-size: 12.5px; padding: 1px 0; }
+  .kunits .ev.sm { width: 18px; height: 18px; font-size: 11px; }
+  .ku { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .kur { color: var(--ink-soft); min-width: 38px; text-align: right; }
+  .ktag { border-radius: 999px; padding: 0 6px; font-size: 12px; }
+  .ktag.good { background: #FFF4CF; } .ktag.grow { background: #E7F3DF; } .ktag.miss { background: #F1EBDC; color: var(--ink-soft); }
+  .kmsg { margin-top: 12px; border: 2px solid var(--board); border-radius: 6px; padding: 10px 14px; font-size: 14.5px; line-height: 1.9; }
+  .kmsg h4 { margin: 0 0 4px; color: var(--board); }
+  .kfoot { margin-top: 10px; font-size: 11px; color: #A89C8A; display: flex; justify-content: space-between; }
+  .ggbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: #F3F8EF; border: 2px dashed #9CC98F; border-radius: 6px; padding: 10px 14px; margin: 0 0 14px; }
+
+  #print { display: none; }
+  @media print {
+    @page { size: A4 portrait; margin: 10mm; }
+    html, body { background: #fff !important; }
+    #app, .toast, .veil { display: none !important; }
+    #print { display: block; }
+    #print .ksheet { box-shadow: none; padding: 0; page-break-after: always; break-after: page; }
+    #print .ksheet:last-child { page-break-after: auto; break-after: auto; }
+    #print .ksubs { grid-template-columns: repeat(2, 1fr); }
+    #print .ktop { grid-template-columns: 300px 1fr; }
+    * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  }
 </style>

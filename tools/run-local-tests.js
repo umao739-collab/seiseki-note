@@ -252,6 +252,7 @@ run('L04 1年間（要録）: 3学期そろった観点だけ、組み合わせ�
 run('L05 GG の列と行（知・思・主・評定）、TSV', () => {
   const cd = cdOf();
   eq(SL.ggColumns(cd, koku, '1学期').map((c) => c.label), ['知', '思', '主']);
+  eq(['‐', '-', 'ー', '/'].map(SL.normAbc), ['/', '/', '/', '/']);
   eq(SL.ggColumns(cd, koku, '1年間').map((c) => c.label), ['知', '思', '主', '評定']);
   const rows = SL.ggRows(cd, koku, '1学期');
   eq(rows.map((r) => r.cells), [['A', 'B', ''], ['', '', '']]);
@@ -271,6 +272,29 @@ run('L08 初期値の教科（学年ごと）', () => {
   eq(ctx.defaultSubjectsForGrade_(1).map((s) => s.name), ['国語', '算数', '生活', '音楽', '図工', '体育']);
   eq(ctx.defaultSubjectsForGrade_(5).map((s) => s.name), ['国語', '社会', '算数', '理科', '音楽', '図工', '家庭', '体育', '外国語']);
   ok(!ctx.defaultSubjectsForGrade_(2)[0].hyoteiYear && ctx.defaultSubjectsForGrade_(3)[0].hyoteiYear, '評定は3年から');
+});
+
+run('L12 個票のプロフィールと所見の下書き（名前・数字が入らない）', () => {
+  const cd = cdOf();
+  cd.students.push({ key: 'c', no: 3, name: 'う' });
+  cd.scores.t1.b = { '知識・技能': 20, '漢字': 20, '思考・判断・表現': 40 };
+  cd.scores.t1.c = { '知識・技能': 30, '漢字': 30, '思考・判断・表現': 60 };
+  const p = SL.profile(cd, 'a', '1学期');
+  eq(p.subjects.length, 1); eq(p.subjects[0].name, '国語');
+  ok(p.subjects[0].rate > p.subjects[0].classRate, 'a は学級より高い');
+  ok(p.strengths.length >= 1, 'とくいが出る');
+  const y = SL.profile(cd, 'a', '1年間');
+  eq(y.subjects[0].units.length, 3);
+  ['short', 'normal', 'long'].forEach((len) => {
+    const t = SL.shoken(p, { seed: 1, length: len, includeChallenge: true });
+    ok(t.length > 30 && t.indexOf('{') === -1 && t.indexOf('undefined') === -1, t);
+    ok(!/[0-9０-９%％]/.test(t.replace(/[123]学期/g, '')), '数字: ' + t);
+    ok(t.indexOf('あ') === -1 || !/あさん/.test(t));
+  });
+  const ai = SL.aiPrompt(p, { grade: '3年' });
+  ok(ai.indexOf('名前は書かないで') !== -1 && !/\d+%/.test(ai));
+  const pb = SL.profile(cd, 'b', '1学期');
+  ok(pb.challenges.length >= 1, 'のびしろが出る');
 });
 
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
