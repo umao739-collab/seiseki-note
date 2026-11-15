@@ -297,5 +297,17 @@ run('L12 個票のプロフィールと所見の下書き（名前・数字が�
   ok(pb.challenges.length >= 1, 'のびしろが出る');
 });
 
+run('L13 学級全員分の AI の文（名前・番号・点数なし）と返事の振り分け', () => {
+  const cd = cdOf();
+  cd.students.forEach((x, i) => { x.name = 'みほん' + i; });
+  const ps = cd.students.map((x) => SL.profile(cd, x.key, '1学期'));
+  const t = SL.aiPromptClass(ps, { grade: '3年' });
+  ok(t.indexOf('【児童01】') !== -1 && t.indexOf('【児童02】') !== -1);
+  ok(t.indexOf('みほん') === -1, '名前が入っている');
+  ok(!/\d+(\.\d+)?%/.test(t), '% が入っている');
+  const got = SL.parseAiReply('はい、書きます。\n\n**【児童01】**\n国語ではよく理解しています。\n\n［児童０２］：算数もがんばっています。\n【児童9】\n');
+  eq(got, { 0: '国語ではよく理解しています。', 1: '算数もがんばっています。' });
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);

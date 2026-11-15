@@ -387,6 +387,8 @@
     #print .ktop { grid-template-columns: 300px 1fr; }
     * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   }
+  button.head { border: none; background: none; padding: 0; cursor: pointer; text-align: left; font: inherit; color: inherit; }
+  button.head:hover h1 { text-decoration: underline wavy rgba(243, 240, 230, .35); }
 </style>
 
 </head>
@@ -410,7 +412,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.6.0';
+var APP_VERSION = '2.7.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -1702,6 +1704,69 @@ function validateHyoteiRule_(rule, subjectConf) {
    * AI（Gemini など）に貼りつけて所見を頼むための文。名前・番号・点数は入れない（言葉での程度だけ）。
    * opts = { length, grade }
    */
+  /** 1人ぶんの「テストの結果のまとめ」の行（名前・番号・点数・% は入れない）。 */
+  function summaryLines(profile) {
+    var L = [];
+    profile.subjects.forEach(function (sm) {
+      if (sm.rate === null) return;
+      var ks = sm.kanten.filter(function (k) { return k.rate !== null && k.classRate !== null; })
+        .map(function (k) { return k.label + 'は' + levelWord(k.rate - k.classRate); });
+      L.push('・' + sm.name + '：全体として' + absWord(sm.rate) + '（' + levelWord(sm.rate - sm.classRate) + '）。' + (ks.length ? ks.join('、') + '。' : ''));
+    });
+    if (profile.strengths.length) L.push('とくいなところ：' + profile.strengths.map(function (x) { return x.subject + '「' + x.label + '」' + (x.unit ? '（単元「' + x.unit + '」）' : ''); }).join('、'));
+    if (profile.growth.length) L.push('のびてきたところ：' + profile.growth.map(function (x) { return x.subject + '（' + x.from + 'より学級の中での位置が上がった）'; }).join('、'));
+    if (profile.challenges.length) L.push('これから伸ばしたいところ：' + profile.challenges.map(function (x) { return x.subject + '「' + x.label + '」'; }).join('、'));
+    if (!L.length) L.push('・この時期のテストの結果はまだありません。');
+    return L;
+  }
+  /** 学級の中での記号（児童01・児童02…）。名簿の順。 */
+  SL.aiCode = function (i) { return '児童' + (i + 1 < 10 ? '0' : '') + (i + 1); };
+
+  /**
+   * 学級全員ぶんを、一度に AI（Gemini など）に頼む文。名前・番号・点数は入れず、「児童01」などの記号だけ。
+   * 返事は「【児童01】」で始まる形にしてもらい、SL.parseAiReply で一人ひとりに振り分ける。
+   */
+  SL.aiPromptClass = function (profiles, opts) {
+    opts = opts || {};
+    var n = TARGET[opts.length] || TARGET.normal;
+    var L = [];
+    L.push('あなたは小学校の担任の先生です。次の「テストの結果のまとめ」をもとに、' + profiles.length + '人ぶんの通知表の所見の下書きを、1人' + n + '字くらいで書いてください。');
+    L.push('');
+    L.push('【書き方のきまり】');
+    L.push('・かならず「【児童01】」のように、記号を【】でかこんだ行のすぐあとに、その子の所見を書いてください。記号の順に、全員ぶん書いてください。');
+    L.push('・所見のほかの文（あいさつ・説明・見出し）は書かないでください。');
+    L.push('・子どもの名前は書かないでください（「〇〇さん」も不要です）。記号（児童01など）も所見の文の中には書かないでください。');
+    L.push('・点数・順位・ほかの子との比べ方は書かないでください。');
+    L.push('・よいところを中心に書き、課題は前向きな言葉で1つまでにしてください。');
+    L.push('・テストの結果からわかることだけを書き、授業中の様子など、わからないことは作らないでください。');
+    L.push('・保護者が読んでわかる、やわらかい言葉にしてください。一人ひとり、言い回しを変えてください。');
+    L.push('・途中で切れたときは、「続き」と言われたら、続きの記号から書いてください。');
+    L.push('');
+    L.push('【テストの結果のまとめ】' + (opts.grade ? '（学年：' + opts.grade + '・' : '（') + '時期：' + (profiles[0] ? profiles[0].term : '') + '）');
+    profiles.forEach(function (p, i) {
+      L.push('');
+      L.push('【' + SL.aiCode(i) + '】');
+      summaryLines(p).forEach(function (x) { L.push(x); });
+    });
+    return L.join('\n');
+  };
+
+  /** AI の返事を「【児童01】…」ごとに分ける。返す: { '0': 文, '1': 文, … }（名簿の何番目か） */
+  SL.parseAiReply = function (text) {
+    var s = String(text || '').replace(/\r\n?/g, '\n').replace(/[［\[]/g, '【').replace(/[］\]]/g, '】')
+      .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
+    var re = /【\s*児童\s*(\d{1,3})\s*】/g;
+    var marks = [], m;
+    while ((m = re.exec(s))) marks.push({ i: Number(m[1]) - 1, start: m.index, end: re.lastIndex });
+    var out = {};
+    marks.forEach(function (mk, k) {
+      var body = s.slice(mk.end, k + 1 < marks.length ? marks[k + 1].start : s.length)
+        .replace(/^[\s:：]+/, '').replace(/\*\*/g, '').replace(/\n{3,}/g, '\n\n').trim();
+      if (mk.i >= 0 && body) out[mk.i] = body.slice(0, 800);
+    });
+    return out;
+  };
+
   SL.aiPrompt = function (profile, opts) {
     opts = opts || {};
     var n = TARGET[opts.length] || TARGET.normal;
@@ -1747,9 +1812,9 @@ function validateHyoteiRule_(rule, subjectConf) {
  *
  *  - クリック・ドラッグ・Shift+矢印で範囲をえらぶ。行の見出し・列の見出しをクリックで行・列ごと
  *  - 数字や文字を打つと、そのマスに入る。Enter で下へ、Tab で右へ。Delete で消す。Esc でやめる
- *  - Ctrl+C（⌘C）でえらんだ範囲をコピー、Ctrl+V（⌘V）で Excel・スプレッドシート・GG からまとめて貼りつけ
+ *  - Ctrl+Cでえらんだ範囲をコピー、Ctrl+Vで Excel・スプレッドシート・GG からまとめて貼りつけ
  *    1つの値を範囲に貼ると、範囲ぜんぶに入る
- *  - Ctrl+Z（⌘Z）で1つ前にもどす
+ *  - Ctrl+Zで1つ前にもどす
  *
  * ★マスの文字は textContent でだけ出す。
  * ★値の検査は呼び出し側の normalize に任せる。入れられない値は入れずに知らせる。
@@ -2288,7 +2353,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     clear(root);
     var who = S.boot ? (S.boot.schoolName ? S.boot.schoolName + '　' : '') + S.boot.name + (S.boot.role === 'admin' ? '' : ' 先生') : '';
     root.appendChild(h('header', { class: 'cover' },
-      h('div', { class: 'head' }, rabbit(72, 'happy'), h('div', null, h('h1', null, 'せいせきノート'), h('div', { class: 'sub' }, 'テストの点から、通知表・要録・GGまで'))),
+      h('button', { class: 'head', title: 'メニューにもどる', onclick: goHome }, rabbit(72, 'happy'), h('div', null, h('h1', null, 'せいせきノート'), h('div', { class: 'sub' }, 'テストの点から、通知表・要録・GGまで'))),
       who ? h('div', { class: 'who' }, who) : null));
     if (S.isDemo) root.appendChild(h('div', { class: 'demo-bar' }, '🧸 デモ（名前も点数も作りものです）',
       S.actingAs ? h('button', { class: 'linkbtn', onclick: function () { S.actingAs = null; S.boot = null; start(); } }, '体験する人をかえる') : null));
@@ -2304,6 +2369,12 @@ function validateHyoteiRule_(rule, subjectConf) {
     root.appendChild(body);
   }
 
+  /** メニュー（ホーム）にもどる。保存していない入力があれば、先にたずねる。 */
+  function goHome() {
+    if (!S.boot || S.view === 'loading' || S.view === 'persona') return;
+    if (S.boot.role !== 'teacher') { if (S.view !== 'admin') openAdmin(); return; }
+    leaveOk().then(function (ok) { if (ok) { S.view = 'home'; S.cd = null; render(); window.scrollTo(0, 0); } });
+  }
   function viewPersona() {
     return h('div', { class: 'page' }, h('h2', null, h('span', { class: 'wash' }, 'だれとして体験しますか？')),
       h('div', { class: 'grid3' }, S.personas.map(function (p) {
@@ -2402,8 +2473,8 @@ function validateHyoteiRule_(rule, subjectConf) {
       h('span', null, h('kbd', null, '矢印'), 'でうごく'), h('span', null, h('kbd', null, 'Enter'), 'で下へ'),
       h('span', null, h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'V'), 'で Excel・GG からまとめて貼りつけ'),
       h('span', null, h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'C'), 'でコピー'),
-      h('span', null, h('kbd', null, 'Delete'), 'で消す'), h('span', null, h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'Z'), 'でもどす'),
-      h('span', null, 'Mac は Ctrl のかわりに ⌘'));
+      h('span', null, h('kbd', null, 'Delete'), 'で消す'), h('span', null, h('kbd', null, 'Ctrl'), '+', h('kbd', null, 'Z'), 'でもどす')
+    );
   }
   function saveBar() {
     var n = pendingCount();
@@ -2859,7 +2930,7 @@ function validateHyoteiRule_(rule, subjectConf) {
         data.forEach(function (r) { r.cells.forEach(function (v) { if (!v) empty++; }); });
         copyText(SL.toTsv(data.map(function (r) { return r.cells; })), 'GG用にコピーしました（' + data.length + '人）' + (empty ? '　空いているマスが ' + empty + 'か所あります' : ''));
       } }, '📋 GG用にコピー'),
-      h('span', { class: 'small' }, 'GG の「教科等」で ' + (term === YEAR ? '' : term + '・') + sub.name + ' をえらび、いちばん上の子の「知」のマスをクリックして Ctrl+V（⌘V）→「保存」。',
+      h('span', { class: 'small' }, 'GG の「教科等」で ' + (term === YEAR ? '' : term + '・') + sub.name + ' をえらび、いちばん上の子の「知」のマスをクリックして Ctrl+V →「保存」。',
         h('br'), h('span', { class: 'muted' }, '名前は入りません。‐（評価できない）は GG の「/」で入ります。')));
   }
   function copyText(text, done) {
@@ -3058,7 +3129,43 @@ function validateHyoteiRule_(rule, subjectConf) {
           if (!items.length) { toast('保存していない下書きはありません'); return; }
           saveItems(items, items.length + '人ぶんの所見を保存しました');
         } }, '💾 下書きをまとめて保存')));
-    return h('div', null, bar, h('div', { class: 'ksplit' }, roster, h('div', null, tools, kohyoSheet(p), editor)));
+    // 学級全員分を AI（Gemini）に頼む
+    var reply = h('textarea', { class: 'text kta', 'aria-label': 'AIの返事', placeholder: 'Gemini の返事（【児童01】… の形）を、まるごとここに貼りつけてください。' });
+    var aiBox = h('details', { class: 'card crit-card', style: { marginTop: '14px' } },
+      h('summary', null, h('span', { class: 'wash fuji' }, '🤖 学級全員分を AI（Gemini）に頼む'), h('span', { class: 'muted small' }, '　' + S.term)),
+      h('ol', { class: 'steps small' },
+        h('li', null, '下の「① 全員分の文をコピー」をおす（名前・番号・点数は入りません。「児童01」などの記号だけです）'),
+        h('li', null, 'Gemini（学校のアカウント）に貼りつけて送る'),
+        h('li', null, '返ってきた文をまるごとコピーして、下の欄に貼り、「② 下書きに振り分ける」をおす（途中で切れたら、Gemini に「続き」と送り、続きも貼り足してください）'),
+        h('li', null, '一人ずつ見て直し、「💾 下書きをまとめて保存」で保存する')),
+      h('div', { class: 'row', style: { margin: '8px 0' } },
+        h('button', { class: 'btn fuji', onclick: function () {
+          var profiles = cd.students.map(function (x) { return SL.profile(cd, x.key, S.term); });
+          copyText(SL.aiPromptClass(profiles, { length: K.length, grade: cd.grade + '年' }), cd.students.length + '人ぶんの文をコピーしました。Gemini に貼りつけてください');
+        } }, '① 全員分の文をコピー'),
+        h('span', { class: 'muted small' }, '1人あたりの長さは、上の「短め・ふつう・長め」のとおりです。')),
+      reply,
+      h('div', { class: 'row', style: { marginTop: '8px' } }, h('span', { class: 'spacer' }),
+        h('button', { class: 'btn wakaba', onclick: function () {
+          var got = SL.parseAiReply(reply.value);
+          var idx = Object.keys(got).map(Number).filter(function (i) { return i < cd.students.length; });
+          if (!idx.length) { toast('「【児童01】」の形の文が見つかりませんでした。Gemini の返事をまるごと貼ってください。', true); return; }
+          var over = idx.filter(function (i) { var k = cd.students[i].key + '|' + S.term; return K.drafts[k] !== undefined || ((cd.shoken || {})[k] || {}).text; }).length;
+          (over ? ask('もう所見がある子がいます', h('p', null, idx.length + '人ぶんのうち ' + over + '人は、もう下書きか保存した所見があります。AI の文で上書きしますか？'),
+            [['やめる', false, 'plain'], ['上書きしない子だけ入れる', 'skip', 'plain'], ['上書きする', true, 'sakura']]) : Promise.resolve(true)).then(function (ok) {
+            if (!ok) return;
+            var n = 0;
+            idx.forEach(function (i) {
+              var k = cd.students[i].key + '|' + S.term;
+              if (ok === 'skip' && (K.drafts[k] !== undefined || ((cd.shoken || {})[k] || {}).text)) return;
+              K.drafts[k] = got[i]; n++;
+            });
+            var missing = cd.students.length - idx.length;
+            toast(n + '人ぶんを下書きに入れました（まだ保存していません）' + (missing > 0 ? '　まだの子: ' + missing + '人' : ''));
+            render();
+          });
+        } }, '② 下書きに振り分ける')));
+    return h('div', null, bar, h('div', { class: 'ksplit' }, roster, h('div', null, tools, kohyoSheet(p), editor, aiBox)));
   }
 
   // ================= 学校の設定（設定担当） =================
