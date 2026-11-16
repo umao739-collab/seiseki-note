@@ -98,6 +98,11 @@
   function emails(ck) { return classes[ck].map(function (s) { return s.email; }); }
   function testsOf(ck) { return tests.filter(function (t) { return t.classKey === ck; }).map(function (t) { return JSON.parse(JSON.stringify(t)); }); }
 
+  // 体験版の確かめ用: ほかの先生が先に点数を変えたことにする
+  window.__demoOtherTeacher = function (ck, value, kanten) {
+    var t = testsOf(ck)[0], email = classes[ck][0].email; kanten = kanten || Object.keys(t.points)[0];
+    var sc = scores[t.testId] = scores[t.testId] || {}; (sc[email] = sc[email] || {})[kanten] = value;
+  };
   var api = {
     bootstrap: function (actingAs) {
       var a = actor(actingAs);
@@ -115,12 +120,13 @@
       var sh = {};
       Object.keys(shoken).forEach(function (k) { if (em.indexOf(k.split('|')[0]) !== -1) sh[k] = shoken[k]; });
       var cr = critOf(c);
-      return { criteria: cr.criteria, hyoteiRules: cr.hyoteiRules, peers: peersOf(c), classKey: c, label: classLabel_(c), grade: gradeOf_(c), termSystem: school.termSystem, terms: terms,
+      return { criteria: cr.criteria, hyoteiRules: cr.hyoteiRules, peers: null, classKey: c, label: classLabel_(c), grade: gradeOf_(c), termSystem: school.termSystem, terms: terms,
         students: classes[c].map(function (s) { return { key: s.email, no: s.number, name: s.name }; }),
         subjects: gradeSubjects[gradeOf_(c)], tests: testsOf(c), scores: sc, manual: mn, shoken: sh,
         sameGrade: a.classes.filter(function (k) { return k !== c && gradeOf_(k) === gradeOf_(c); }).map(function (k) { return { classKey: k, label: classLabel_(k) }; }),
         canEditSubjects: a.isSetup };
     },
+    getPeers: function (ck, actingAs) { var a = actor(actingAs); return peersOf(cls(a, ck)); },
     saveCriteria: function (ck, subject, term, value, actingAs) {
       var a = actor(actingAs); var c = cls(a, ck);
       var sub = gradeSubjects[gradeOf_(c)].filter(function (s) { return s.name === subject; })[0];
@@ -180,19 +186,25 @@
       var a = actor(actingAs); var c = cls(a, ck);
       var byId = {};
       testsOf(c).forEach(function (t) { byId[t.testId] = t; });
+      var conflicts = [];
       validateScoreChanges_(changes, emails(c), byId).forEach(function (x) {
         var sc = scores[x.testId] = scores[x.testId] || {};
         var row = sc[x.studentEmail] = sc[x.studentEmail] || {};
+        var cur = row[x.kanten] === undefined ? '' : String(row[x.kanten]);
+        if (x.base !== undefined && cur !== x.base && cur !== String(x.value)) { conflicts.push({ testId: x.testId, studentEmail: x.studentEmail, kanten: x.kanten, value: row[x.kanten] === undefined ? '' : row[x.kanten], byName: 'デモ 学年の先生' }); return; }
         if (x.value === '') delete row[x.kanten]; else row[x.kanten] = x.value;
       });
-      return { savedAt: '2026-11-15 10:00:00', count: changes.length };
+      return { savedAt: '2026-11-15 10:00:00', count: changes.length - conflicts.length, conflicts: conflicts };
     },
     saveManual: function (ck, changes, actingAs) {
       var a = actor(actingAs); var c = cls(a, ck);
+      var conflicts = [];
       validateManualChanges_(changes, emails(c), gradeSubjects[gradeOf_(c)], terms).forEach(function (x) {
-        manual[[x.studentEmail, x.subject, x.term, x.field].join('|')] = x.value;
+        var k = [x.studentEmail, x.subject, x.term, x.field].join('|'), cur = manual[k] || '';
+        if (x.base !== undefined && cur !== x.base && cur !== x.value) { conflicts.push({ studentEmail: x.studentEmail, subject: x.subject, term: x.term, field: x.field, value: cur, byName: 'デモ 学年の先生' }); return; }
+        manual[k] = x.value;
       });
-      return { savedAt: '2026-11-15 10:00:00', count: changes.length };
+      return { savedAt: '2026-11-15 10:00:00', count: changes.length - conflicts.length, conflicts: conflicts };
     },
     saveShoken: function (ck, items, actingAs) {
       var a = actor(actingAs); var c = cls(a, ck);

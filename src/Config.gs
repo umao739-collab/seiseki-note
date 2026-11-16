@@ -13,7 +13,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.11.0';
+var APP_VERSION = '2.12.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -42,7 +42,9 @@ var SCHEMA = {
   /** 評価の基準（クラス×教科×学期）と評定の表（クラス×教科・term は「評定」）。value は JSON。 */
   criteria: ['key', 'classKey', 'subject', 'term', 'value', 'updatedAt', 'updatedBy'],
   /** 所見（クラスごとのシート shoken_<classKey>）。 */
-  shoken: ['key', 'studentEmail', 'term', 'text', 'updatedAt', 'updatedBy']
+  shoken: ['key', 'studentEmail', 'term', 'text', 'updatedAt', 'updatedBy'],
+  /** 消したテストと、その点数の控え（まちがえて消したときに戻せるように残す）。test・scores は JSON。 */
+  trash: ['key', 'classKey', 'subject', 'term', 'test', 'scores', 'deletedAt', 'deletedBy']
 };
 var CLASS_SHEETS = { scores: 'scores_', manual: 'manual_', shoken: 'shoken_' };
 
@@ -99,7 +101,7 @@ function defaultSubject_(name, opts) {
   kanten.push({ label: KANTEN_THINK, gg: '思', test: true, a: a, b: b });
   // GG の「教科等」の並び（知・思・主・評定）と同じ順にする。主体的はテストでは測れないので先生が入れる
   kanten.push({ label: KANTEN_ATTITUDE, gg: '主', test: false });
-  return { name: name, kanten: kanten, total: { a: a, b: b, r3: 2.5, r2: 1.5 }, hyoteiTerm: false, hyoteiYear: !!opts.hyotei };
+  return { name: name, kanten: kanten, total: { a: a, b: b }, hyoteiTerm: false, hyoteiYear: !!opts.hyotei };
 }
 function defaultSubjectsForGrade_(grade) {
   var g = Number(grade);
@@ -120,7 +122,7 @@ function defaultSubjectsForGrade_(grade) {
  * 末尾 `_` の無い関数はこの一覧だけ（google.script.run から呼べる）。
  * tools/run-local-tests.js がグローバル関数の一覧と照らし合わせる。
  */
-var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
+var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'getPeers', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
   'saveCriteria', 'saveHyoteiRule', 'copyCriteriaToClasses', 'previewSmileImport', 'importSmile',
   'saveShoken', 'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
 var ADMIN_FUNCTIONS = ['setup', 'startFiscalYear', 'closeFiscalYear'];

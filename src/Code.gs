@@ -104,7 +104,7 @@ function getClassData(classKey, actingAs) {
     });
     var crit = criteriaOf_(cc.fileId, cc.classKey);
     return {
-      criteria: crit.criteria, hyoteiRules: crit.hyoteiRules, peers: peersOf_(cc),
+      criteria: crit.criteria, hyoteiRules: crit.hyoteiRules, peers: null,
       classKey: cc.classKey, label: classLabel_(cc.classKey), grade: cc.grade, termSystem: cc.school.termSystem, terms: cc.terms,
       students: cc.students.map(function (s) { return { key: s.email, no: s.number, name: s.name }; }),
       subjects: cc.subjects, tests: testsOfClass_(cc.fileId, cc.classKey), scores: scores, manual: manual, shoken: shoken,
@@ -151,6 +151,27 @@ function peersOf_(cc) {
         return { subject: t.subject, term: t.term, name: t.name, points: t.points, rows: emails.map(function (e) { return sc[e] || null; }) };
       })
     };
+  });
+}
+
+/**
+ * 学年のほかのクラスの点数（名前なし）。重いので、クラスの画面を出したあとに、別に読む。
+ * 2分のあいだはキャッシュから返す（タブを切りかえるたびに読み直さない）。
+ */
+function getPeers(classKey, actingAs) {
+  return guard_(function () {
+    var ctx = getContext_(actingAs);
+    var cc = classContext_(ctx, classKey);
+    var cs = null, key = 'peers1:' + cc.fileId.slice(-12) + ':' + cc.classKey;
+    try { cs = CacheService.getScriptCache(); } catch (e) { cs = null; }
+    if (cs) {
+      try { var hit = cs.get(key); if (hit) return JSON.parse(hit); } catch (e) { /* 読み直す */ }
+    }
+    var peers = peersOf_(cc);
+    if (cs) {
+      try { var json = JSON.stringify(peers); if (json.length < 95000) cs.put(key, json, 120); } catch (e) { /* 置けなくてもよい */ }
+    }
+    return peers;
   });
 }
 
@@ -218,6 +239,15 @@ function saveTests(classKey, subject, term, tests, actingAs) {
     var keep = list.map(function (t) { return t.testId; });
     var dropped = ids.filter(function (id) { return keep.indexOf(id) === -1; });
     if (dropped.length) {
+      // 消す前に、テストと点数の控えを「trash」シートに残す（まちがえて消したときに戻せるように）
+      var now = now_();
+      var scoreRows = Store.list(cc.fileId, Store.classSheet('scores', cc.classKey), function (r) { return dropped.indexOf(r.testId) !== -1; });
+      Store.upsert(cc.fileId, 'trash', function (o) { return o.key; }, before.filter(function (t) { return dropped.indexOf(t.testId) !== -1; }).map(function (t) {
+        var sc = {};
+        scoreRows.forEach(function (r) { if (r.testId === t.testId) sc[r.studentEmail] = r.values; });
+        return { key: t.testId + '|' + now, classKey: cc.classKey, subject: sub.name, term: term,
+          test: JSON.stringify({ testId: t.testId, name: t.name, points: t.points, order: t.order }), scores: JSON.stringify(sc), deletedAt: now, deletedBy: ctx.me };
+      }));
       Store.replaceWhere(cc.fileId, Store.classSheet('scores', cc.classKey), function (r) { return dropped.indexOf(r.testId) !== -1; }, []);
     }
     return { tests: testsOfClass_(cc.fileId, cc.classKey) };
@@ -279,16 +309,42 @@ function saveScores(classKey, changes, actingAs) {
       var g = grouped[k] = grouped[k] || { key: k, testId: c.testId, studentEmail: c.studentEmail, set: {} };
       g.set[c.kanten] = c.value;
     });
+    list.forEach(function (c) { if (c.base !== undefined) (grouped[c.testId + '|' + c.studentEmail].base = grouped[c.testId + '|' + c.studentEmail].base || {})[c.kanten] = c.base; });
     var now = now_();
+    var conflicts = [];
+    // ロックの中で読み直した値が、画面で読みこんだ値（base）と違うマスは、ほかの人が先に変えたので上書きしない
     Store.upsert(cc.fileId, Store.classSheet('scores', cc.classKey), function (o) { return o.key; },
       Object.keys(grouped).map(function (k) { return grouped[k]; }),
       function (old, next) {
-        var v = {};
+        var v = {}, changed = false;
         if (old) { try { v = JSON.parse(old.values); } catch (e) { v = {}; } }
-        Object.keys(next.set).forEach(function (l) { if (next.set[l] === '') delete v[l]; else v[l] = next.set[l]; });
+        Object.keys(next.set).forEach(function (l) {
+          var cur = v[l] === undefined || v[l] === null ? '' : String(v[l]);
+          var want = String(next.set[l]);
+          if (next.base && l in next.base && cur !== next.base[l] && cur !== want) {
+            conflicts.push({ testId: next.testId, studentEmail: next.studentEmail, kanten: l, value: v[l] === undefined ? '' : v[l], by: old ? old.updatedBy : '' });
+            return;
+          }
+          if (next.set[l] === '') delete v[l]; else v[l] = next.set[l];
+          changed = true;
+        });
+        if (old && !changed) return old;
         return { key: next.key, testId: next.testId, studentEmail: next.studentEmail, values: JSON.stringify(v), updatedAt: now, updatedBy: ctx.me };
       });
-    return { savedAt: now, count: list.length };
+    return { savedAt: now, count: list.length - conflicts.length, conflicts: conflictOut_(conflicts, cc) };
+  });
+}
+
+/** 保存できなかったマス（ほかの人が先に変えた）を画面に返す形にする。変えた人は名前だけ（メールは返さない）。 */
+function conflictOut_(conflicts, cc) {
+  if (!conflicts.length) return [];
+  var staff = {};
+  Directory.listStaff(cc.school.schoolId).forEach(function (x) { staff[x.email] = x.name; });
+  return conflicts.map(function (c) {
+    var o = {};
+    Object.keys(c).forEach(function (k) { if (k !== 'by') o[k] = c[k]; });
+    o.byName = staff[normEmail_(c.by)] || 'ほかの先生';
+    return o;
   });
 }
 
@@ -299,11 +355,20 @@ function saveManual(classKey, changes, actingAs) {
     var cc = classContext_(ctx, classKey);
     var list = validateManualChanges_(changes, cc.emails, cc.subjects, cc.terms);
     var now = now_();
+    var conflicts = [];
     Store.upsert(cc.fileId, Store.classSheet('manual', cc.classKey), function (o) { return o.key; }, list.map(function (c) {
       return { key: [c.studentEmail, c.subject, c.term, c.field].join('|'), studentEmail: c.studentEmail, subject: c.subject,
-        term: c.term, field: c.field, value: c.value, updatedAt: now, updatedBy: ctx.me };
-    }));
-    return { savedAt: now, count: list.length };
+        term: c.term, field: c.field, value: c.value, base: c.base, updatedAt: now, updatedBy: ctx.me };
+    }), function (old, next) {
+      var cur = old ? old.value : '';
+      if (next.base !== undefined && cur !== next.base && cur !== next.value) {
+        conflicts.push({ studentEmail: next.studentEmail, subject: next.subject, term: next.term, field: next.field, value: cur, by: old ? old.updatedBy : '' });
+        return old;
+      }
+      delete next.base;
+      return next;
+    });
+    return { savedAt: now, count: list.length - conflicts.length, conflicts: conflictOut_(conflicts, cc) };
   });
 }
 

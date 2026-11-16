@@ -12,7 +12,40 @@
  */
 var Directory = (function () {
   var _cache = null;
-  function clear() { _cache = null; }
+  // 名簿・マスタは呼び出しのたびに読むと重いので、CacheService に少しの間（5分）置く。
+  // 取り込み・割り当てなどで書いたら clear() で捨てる。設定担当が名簿シートを手で直したときも、5分で読み直される。
+  var CACHE_PREFIX = 'dir1:', CACHE_TTL = 300, CHUNK = 90000;
+  function _store() { try { return CacheService.getScriptCache(); } catch (e) { return null; } }
+  function _cacheGet() {
+    var cs = _store();
+    if (!cs) return null;
+    try {
+      var n = Number(cs.get(CACHE_PREFIX + 'n'));
+      if (!n) return null;
+      var keys = [];
+      for (var i = 0; i < n; i++) keys.push(CACHE_PREFIX + i);
+      var got = cs.getAll(keys);
+      var parts = keys.map(function (k) { return got[k]; });
+      if (parts.some(function (x) { return x === undefined || x === null; })) return null;
+      return JSON.parse(parts.join(''));
+    } catch (e) { return null; }
+  }
+  function _cachePut(c) {
+    var cs = _store();
+    if (!cs) return;
+    try {
+      var json = JSON.stringify(c), items = {}, n = Math.ceil(json.length / CHUNK);
+      if (n > 50) return;
+      for (var i = 0; i < n; i++) items[CACHE_PREFIX + i] = json.slice(i * CHUNK, (i + 1) * CHUNK);
+      cs.putAll(items, CACHE_TTL);
+      cs.put(CACHE_PREFIX + 'n', String(n), CACHE_TTL);
+    } catch (e) { /* 置けなくても、読み直せば動く */ }
+  }
+  function clear() {
+    _cache = null;
+    var cs = _store();
+    if (cs) { try { cs.remove(CACHE_PREFIX + 'n'); } catch (e) { /* つぎに読み直す */ } }
+  }
   function _rows(ss, name) {
     var sh = ss.getSheetByName(name);
     if (!sh || sh.getLastRow() < 2) return [];
@@ -23,6 +56,8 @@ var Directory = (function () {
   }
   function _load() {
     if (_cache) return _cache;
+    var hit = _cacheGet();
+    if (hit) { _cache = hit; return hit; }
     var master = SpreadsheetApp.openById(getMasterId_());
     var c = {};
     MASTER_SHEETS.forEach(function (n) { c[n] = _rows(master, n); });
@@ -39,6 +74,7 @@ var Directory = (function () {
       }
     });
     _cache = c;
+    _cachePut(c);
     return c;
   }
   function _sheetRows(sh, cols) {

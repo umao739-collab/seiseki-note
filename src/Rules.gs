@@ -59,7 +59,7 @@ function checkObject_(v) {
 
 // ================= 教科・観点・基準 =================
 
-/** 学年の教科の設定を検査する。subjects = [{name, kanten:[{label, gg, test, into, a, b}], total:{a,b,r3,r2}, hyoteiTerm, hyoteiYear}] */
+/** 学年の教科の設定を検査する。subjects = [{name, kanten:[{label, gg, test, into, a, b}], total:{a,b}, hyoteiTerm, hyoteiYear}] */
 function validateGradeSubjects_(subjects) {
   checkArray_(subjects, 20);
   if (!subjects.length) throw appError_('教科を1つ以上入れてください。');
@@ -95,9 +95,7 @@ function validateGradeSubjects_(subjects) {
     });
     if (!kanten.some(function (k) { return !k.into; })) throw appError_(name + 'に観点を入れてください。');
     checkObject_(s.total);
-    var total = { a: checkInt_(s.total.a, 1, 100, 'Aの基準'), b: checkInt_(s.total.b, 0, 100, 'Cの基準'),
-      r3: Number(s.total.r3), r2: Number(s.total.r2) };
-    if (!(total.r3 > total.r2 && total.r2 >= 1 && total.r3 <= 3)) throw appError_(name + 'の評定の基準が正しくありません（1〜3で、評定3の基準を大きく）。');
+    var total = { a: checkInt_(s.total.a, 1, 100, 'Aの基準'), b: checkInt_(s.total.b, 0, 100, 'Cの基準') };
     return { name: name, kanten: kanten, total: total, hyoteiTerm: s.hyoteiTerm === true, hyoteiYear: s.hyoteiYear === true };
   });
 }
@@ -151,7 +149,10 @@ function validateScoreChanges_(changes, students, testsById) {
       if (!/^\d+(\.\d+)?$/.test(v) || Number(v) > t.points[label]) throw appError_('「' + t.name + '」' + label + 'の点は0〜' + t.points[label] + 'にしてください。');
       value = Number(v);
     }
-    return { studentEmail: e, testId: t.testId, kanten: label, value: value };
+    // base = 画面で読みこんだときの値（同時に編集されていないかを確かめる）。無ければ確かめない
+    var out = { studentEmail: e, testId: t.testId, kanten: label, value: value };
+    if (c.base !== undefined && c.base !== null) out.base = String(c.base).slice(0, 20);
+    return out;
   });
 }
 
@@ -175,7 +176,9 @@ function validateManualChanges_(changes, students, subjects, terms) {
     else if (['／', '-', '－', '‐', 'ー', '―', '−', '–', '—'].indexOf(v) !== -1) v = '/';
     var ok = isHy ? /^([1-3]|\/)?$/.test(v) : /^([ABC]|\/)?$/.test(v);
     if (!ok) throw appError_(isHy ? '評定は 1・2・3 か ‐（評価できない）にしてください。' : '評価は A・B・C か ‐（評価できない）にしてください。');
-    return { studentEmail: e, subject: sub.name, term: term, field: field, value: v };
+    var out = { studentEmail: e, subject: sub.name, term: term, field: field, value: v };
+    if (c.base !== undefined && c.base !== null) out.base = String(c.base).slice(0, 4);
+    return out;
   });
 }
 

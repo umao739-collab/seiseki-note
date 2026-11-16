@@ -104,7 +104,7 @@
   var S = {
     actingAs: null, personas: window.__PERSONAS__ || [], isDemo: !!window.__IS_DEMO__,
     boot: null, view: 'loading', msg: '', classKey: null, cd: null, tab: 'scores',
-    subject: null, term: null, pending: { scores: {}, manual: {}, criteria: {}, rules: {} }, setup: null, admin: null, setupGrade: null
+    subject: null, term: null, pending: { scores: {}, manual: {}, criteria: {}, rules: {} }, base: { scores: {}, manual: {} }, setup: null, admin: null, setupGrade: null
   };
   function pendingCount() {
     return Object.keys(S.pending.scores).length + Object.keys(S.pending.manual).length + Object.keys(S.pending.criteria).length + Object.keys(S.pending.rules).length;
@@ -138,7 +138,7 @@
     return ask('保存していない入力があります', h('p', null, 'まだ保存していない入力が ' + pendingCount() + 'つ あります。どうしますか？'),
       [['もどる', 'back', 'plain'], ['保存しないで進む', 'drop', 'plain'], ['保存して進む', 'save', 'wakaba']]).then(function (v) {
       if (v === 'back') return false;
-      if (v === 'drop') { S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} }; return reloadClass().then(function () { return true; }); }
+      if (v === 'drop') { S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} }; S.base = { scores: {}, manual: {} }; return reloadClass().then(function () { return true; }); }
       return saveAll().then(function () { return true; });
     });
   }
@@ -159,16 +159,31 @@
     call('getClassData', classKey).then(function (cd) {
       S.cd = cd; S.classKey = classKey; S.view = 'class';
       cd._savedCriteria = JSON.parse(JSON.stringify(cd.criteria || {}));
-      S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} };
+      S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} }; S.base = { scores: {}, manual: {} };
       if (S.onSaved) S.onSaved();
       if (!S.subject || !cd.subjects.some(function (x) { return x.name === S.subject; })) S.subject = cd.subjects[0].name;
       if (!S.term || (cd.terms.indexOf(S.term) === -1 && S.term !== YEAR)) S.term = cd.terms[0];
       if (!cd.tests.length) S.tab = 'tests';
       render();
+      loadPeers(cd);
     }).catch(function (e) { fail(e); S.view = 'home'; render(); });
   }
   function reloadClass() {
-    return call('getClassData', S.classKey).then(function (cd) { cd._savedCriteria = JSON.parse(JSON.stringify(cd.criteria || {})); S.cd = cd; render(); }).catch(fail);
+    var old = S.cd;
+    return call('getClassData', S.classKey).then(function (cd) {
+      cd._savedCriteria = JSON.parse(JSON.stringify(cd.criteria || {}));
+      if (old && old.classKey === cd.classKey && old.peers) cd.peers = old.peers;
+      S.cd = cd; render();
+      loadPeers(cd);
+    }).catch(fail);
+  }
+  /** 学年のほかのクラスの人数（名前なし）は重いので、画面を出したあとに読む。 */
+  function loadPeers(cd) {
+    call('getPeers', cd.classKey).then(function (peers) {
+      if (S.cd !== cd) return;
+      cd.peers = peers || [];
+      if (S.peerRedraw) S.peerRedraw();
+    }).catch(function () { if (S.cd === cd && !cd.peers) { cd.peers = []; if (S.peerRedraw) S.peerRedraw(); } });
   }
   function openSetup() {
     S.view = 'loading'; S.msg = '学校の設定をひらいています…'; render();
@@ -321,13 +336,46 @@
     var old = document.querySelector('.savebar');
     if (old) old.parentNode.replaceChild(saveBar(), old);
   }
+  /** ほかの先生が先に変えていたマス（保存しなかったマス）を知らせる。 */
+  function showConflicts(list) {
+    var cd = S.cd, names = {}, tests = {};
+    cd.students.forEach(function (x) { names[x.key] = x.no + '番 ' + x.name; });
+    (cd.tests || []).forEach(function (t) { tests[t.testId] = t.subject + '「' + t.name + '」'; });
+    var by = {};
+    list.forEach(function (c) { by[c.byName] = true; });
+    var body = h('div', null,
+      h('p', null, '保存しようとした間に、', h('b', null, Object.keys(by).join('・')), ' が同じマスを先に変えていました。'),
+      h('p', null, 'その ' + list.length + 'マスは上書きせず、先に入っていた値にもどしました。ほかのマスは保存できています。'),
+      h('ul', { class: 'small', style: { maxHeight: '40vh', overflow: 'auto' } }, list.slice(0, 50).map(function (c) {
+        var where = c.testId ? tests[c.testId] + ' ' + short(c.kanten) : c.subject + '・' + c.term + '・' + (c.field === '評定' ? '評定' : short(c.field));
+        var v = c.value === '' || c.value === null || c.value === undefined ? '（空）' : (c.value === '/' ? '‐' : c.value);
+        return h('li', null, (names[c.studentEmail] || '') + '　' + where + '　→ いまの値: ' + v);
+      })),
+      h('p', { class: 'muted small' }, '必要なら、表を見て入れなおしてから、もう一度「保存する」を押してください。'));
+    ask('ほかの先生が先に変えていたマスがあります', body, [['わかった', true, 'sora']]).then(function () { render(); });
+  }
   function saveAll() {
     var cd = S.cd;
-    var sc = Object.keys(S.pending.scores).map(function (k) { var p = k.split('|'); return { testId: p[0], studentEmail: p[1], kanten: p.slice(2).join('|'), value: S.pending.scores[k] }; });
-    var mn = Object.keys(S.pending.manual).map(function (k) { var p = k.split('|'); return { studentEmail: p[0], subject: p[1], term: p[2], field: p[3], value: S.pending.manual[k] }; });
+    var sc = Object.keys(S.pending.scores).map(function (k) { var p = k.split('|'); return { testId: p[0], studentEmail: p[1], kanten: p.slice(2).join('|'), value: S.pending.scores[k], base: S.base.scores[k] }; });
+    var mn = Object.keys(S.pending.manual).map(function (k) { var p = k.split('|'); return { studentEmail: p[0], subject: p[1], term: p[2], field: p[3], value: S.pending.manual[k], base: S.base.manual[k] }; });
     var jobs = [];
-    if (sc.length) jobs.push(call('saveScores', cd.classKey, sc));
-    if (mn.length) jobs.push(call('saveManual', cd.classKey, mn));
+    var conflicts = [];
+    function took(r) { (r && r.conflicts || []).forEach(function (c) { conflicts.push(c); }); }
+    if (sc.length) jobs.push(call('saveScores', cd.classKey, sc).then(function (r) {
+      took(r);
+      (r.conflicts || []).forEach(function (c) {
+        var t = cd.scores[c.testId] = cd.scores[c.testId] || {};
+        var row = t[c.studentEmail] = t[c.studentEmail] || {};
+        if (c.value === '' || c.value === null) delete row[c.kanten]; else row[c.kanten] = Number(c.value);
+      });
+    }));
+    if (mn.length) jobs.push(call('saveManual', cd.classKey, mn).then(function (r) {
+      took(r);
+      (r.conflicts || []).forEach(function (c) {
+        var key = [c.studentEmail, c.subject, c.term, c.field].join('|');
+        if (c.value) cd.manual[key] = c.value; else delete cd.manual[key];
+      });
+    }));
     var nc = 0;
     Object.keys(S.pending.criteria).forEach(function (k) {
       var p = k.split('|'); nc++;
@@ -338,10 +386,12 @@
     if (btn) { btn.disabled = true; btn.textContent = '保存しています…'; }
     return Promise.all(jobs).then(function () {
       cd._savedCriteria = JSON.parse(JSON.stringify(cd.criteria || {}));
-      S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} };
+      S.pending = { scores: {}, manual: {}, criteria: {}, rules: {} }; S.base = { scores: {}, manual: {} };
       if (S.onSaved) S.onSaved();
-      toast('保存しました' + (sc.length + mn.length ? '（' + (sc.length + mn.length) + 'マス）' : '') + (nc ? '（基準・評定の表）' : ''));
+      var okCount = sc.length + mn.length - conflicts.length;
+      if (okCount || nc || !conflicts.length) toast('保存しました' + (okCount ? '（' + okCount + 'マス）' : '') + (nc ? '（基準・評定の表）' : ''));
       refreshSaveBar();
+      if (conflicts.length) showConflicts(conflicts);
     }).catch(function (e) { fail(e); refreshSaveBar(); throw e; });
   }
 
@@ -399,6 +449,20 @@
     }
     function save() {
       var payload = list.map(function (t) { return { testId: t.testId, name: t.name, points: t.points }; });
+      // 点数の入っているテストを消すときは、登録する前にもう一度確かめる
+      var keep = payload.map(function (t) { return t.testId; });
+      var gone = SL.testsOf(cd, sub.name, S.term).filter(function (t) { return keep.indexOf(t.testId) === -1 && scoreCount(t.testId); });
+      var sure = gone.length ? ask('点数の入ったテストを消します', h('div', null,
+        h('p', null, '次のテストを消して登録します。入っている点数も、いっしょに消えます。'),
+        h('ul', null, gone.map(function (t) { return h('li', null, h('b', null, t.name), '（' + scoreCount(t.testId) + '人ぶんの点数）'); })),
+        h('p', { class: 'muted small' }, '消したテストと点数は、データの「trash」シートに控えを残します。まちがえたときは、アプリ管理者に連絡すれば戻せます。')),
+        [['やめる', false, 'plain'], ['消して登録する', true, 'sakura']]) : Promise.resolve(true);
+      return sure.then(function (ok) {
+        if (!ok) { toast('登録をやめました（まだ消していません）'); return false; }
+        return doSave(payload);
+      });
+    }
+    function doSave(payload) {
       return call('saveTests', cd.classKey, sub.name, S.term, payload).then(function (r) {
         cd.tests = r.tests; dirty = false;
         toast(sub.name + '・' + S.term + 'のテストを登録しました');
@@ -406,7 +470,8 @@
       }).catch(function (e) { fail(e); throw e; });
     }
     function copyDialog() {
-      (dirty ? save() : Promise.resolve()).then(function () {
+      (dirty ? save() : Promise.resolve()).then(function (r) {
+        if (r === false) return;
         var chosen = {};
         var body = h('div', null, h('p', null, sub.name + '・' + S.term + 'のテスト（名前と配点）を、ほかのクラスにも写します。'),
           h('p', { class: 'muted small' }, '同じ名前のテストは配点をそろえます。写す先にしかないテストと、もう入っている点数は消しません。'),
@@ -545,6 +610,12 @@
       return h('span', { class: 'stepper' }, h('button', { class: 'st', 'aria-label': '1 へらす', onclick: function () { step(-1); } }, '−'), inp,
         h('button', { class: 'st', 'aria-label': '1 ふやす', onclick: function () { step(1); } }, '＋'));
     }
+    // ほかのクラスの人数が届いたら描きなおす（数字を入れている途中なら、入れおわってから）
+    S.peerRedraw = function () {
+      if (!box.isConnected) return;
+      if (box.contains(document.activeElement)) { box.addEventListener('focusout', function once() { box.removeEventListener('focusout', once); setTimeout(draw, 0); }); return; }
+      draw();
+    };
     function draw() {
       clear(box);
       var mine = myCounts(cd, sub, term);
@@ -563,7 +634,7 @@
         }))));
       box.appendChild(h('div', { class: 'row small', style: { marginTop: '8px' } },
         h('span', { class: 'muted' }, 'B は、その間です。数字を変えると、表の評価と人数がすぐ変わります（「保存する」で決まります）。',
-          cd.peers && cd.peers.length ? 'ほかのクラスは、名前なしの点数から数えています。' : ''),
+          cd.peers && cd.peers.length ? 'ほかのクラスは、名前なしの点数から数えています。' : cd.peers === null ? 'ほかのクラスの人数を読みこんでいます…' : ''),
         h('span', { class: 'spacer' }),
         cd.sameGrade.length ? h('button', { class: 'btn plain', onclick: function () { copyToGrade(sub.name, term, '評価の基準（' + sub.name + '・' + term + '）'); } }, '👯 同じ学年にも反映') : null));
     }
@@ -667,8 +738,11 @@
           var col = cols[ch.c], sk = rows[ch.r].key;
           var sc = cd.scores[col.test.testId] = cd.scores[col.test.testId] || {};
           var row = sc[sk] = sc[sk] || {};
+          var pk = [col.test.testId, sk, col.kanten].join('|');
+          // 読みこんだときの値を、はじめて変えたときに覚えておく（保存のとき、ほかの人が先に変えていないか確かめる）
+          if (!(pk in S.base.scores)) S.base.scores[pk] = row[col.kanten] === undefined || row[col.kanten] === null ? '' : String(row[col.kanten]);
           if (ch.value === '') delete row[col.kanten]; else row[col.kanten] = ch.value;
-          S.pending.scores[[col.test.testId, sk, col.kanten].join('|')] = ch.value;
+          S.pending.scores[pk] = ch.value;
         });
       },
       afterChange: function () { grid.refresh(); refreshSaveBar(); panelRefresh(); },
@@ -723,6 +797,7 @@
           var col = cols[ch.c], sk = rows[ch.r].key;
           var field = col.kind === 'hy' ? '評定' : col.k.label;
           var key = [sk, sub.name, term, field].join('|');
+          if (!(key in S.base.manual)) S.base.manual[key] = cd.manual[key] || '';
           if (ch.value === '') delete cd.manual[key]; else cd.manual[key] = ch.value;
           S.pending.manual[key] = ch.value;
         });

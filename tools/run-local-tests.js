@@ -117,8 +117,9 @@ run('R06 教科・観点・基準の検査', () => {
   throws(() => ctx.validateGradeSubjects_(bad), /C になる/);
   const bad2 = JSON.parse(JSON.stringify(g3)); bad2[0].kanten[1].into = 'ないもの';
   throws(() => ctx.validateGradeSubjects_(bad2), /まとめ先/);
-  const bad3 = JSON.parse(JSON.stringify(g3)); bad3[0].total.r3 = 1.2;
-  throws(() => ctx.validateGradeSubjects_(bad3), /評定の基準/);
+  // 前の版で保存した r3・r2（使っていない評定の基準）が残っていても通り、保存し直すと消える
+  const old3 = JSON.parse(JSON.stringify(g3)); old3[0].total.r3 = 2.5; old3[0].total.r2 = 1.5;
+  eq(Object.keys(ctx.validateGradeSubjects_(old3)[0].total).sort(), ['a', 'b']);
 });
 run('R07 担任の割り当ての検査', () => {
   const r = ctx.normalizeAssignments_([{ classKey: '3-1', homeroom: 'T@example.com', assistants: ['u@example.com', 't@example.com'] }], ['3-1'], ['t@example.com', 'u@example.com']);
