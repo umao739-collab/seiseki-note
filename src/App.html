@@ -1074,6 +1074,22 @@
     var pr = document.getElementById('print');
     clear(pr);
     list.forEach(function (st) { pr.appendChild(kohyoSheet(SL.profile(S.cd, st.key, S.term))); });
+    // A4 の1ページ（余白 10mm → 高さ 277mm）に入らない子だけ、その子の個票を縮めて1ページに収める
+    pr.classList.add('measuring');
+    var mm = pr.offsetWidth / 190, pageH = 277 * mm - 4;
+    Array.prototype.forEach.call(pr.children, function (sheet) {
+      sheet.style.zoom = '';
+      var z = 1;
+      // 縮めると文字の折り返しが変わって高さも変わるので、測りなおして何回か合わせる
+      for (var i = 0; i < 5; i++) {
+        var hh = sheet.getBoundingClientRect().height;
+        if (hh <= pageH && (z >= 1 || pageH - hh < pageH * 0.015)) break;
+        z = Math.min(1, Math.floor(z * pageH / hh * 1000) / 1000);
+        sheet.style.zoom = z < 1 ? String(z) : '';
+      }
+      if (sheet.getBoundingClientRect().height > pageH) { z = Math.floor(z * 0.97 * 1000) / 1000; sheet.style.zoom = String(z); }
+    });
+    pr.classList.remove('measuring');
     setTimeout(function () { window.print(); }, 60);
   }
   function viewKohyo() {
