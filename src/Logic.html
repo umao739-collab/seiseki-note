@@ -381,7 +381,7 @@
   };
 
 
-  // ================= 個票・所見 =================
+  // ================= 個票 =================
   var STRONG_RATE = 85, WEAK_RATE = 70;
   var TEST_UNIT_RE = /たしかめ|まとめ|テスト|ふくしゅう|復習|総合/;
   function pick(arr, seed, salt) { return arr[Math.abs((seed || 0) + (salt || 0)) % arr.length]; }
@@ -473,7 +473,7 @@
     return out.sort(function (x, y) { return y.diff - x.diff; });
   }
 
-  /** 1人のプロフィール（個票・所見のもと）。term は学期か「1年間」。 */
+  /** 1人のプロフィール（個票のもと）。term は学期か「1年間」。 */
   SL.profile = function (cd, sk, term) {
     var idx = 0, st = null;
     cd.students.forEach(function (x, i) { if (x.key === sk) { idx = i; st = x; } });
@@ -520,112 +520,9 @@
   }
   SL.phraseOf = phraseOf;
 
-  var T = {
-    strongUnit: [
-      '{subj}の「{unit}」の学習では、{ph}がしっかりと身についており、確かな理解を示しました。',
-      '{subj}では、{ph}に優れています。「{unit}」の学習でも、学んだことを生かして問題に取り組むことができました。',
-      '「{unit}」の学習では、{ph}を発揮し、{subj}の学習に自信をもって取り組むことができました。'
-    ],
-    strong: [
-      '{subj}では、{ph}が確かに身についています。',
-      '{subj}の学習では、{ph}を十分に発揮することができました。',
-      '{subj}では、{ph}に優れ、安定した理解を示しています。'
-    ],
-    best: [
-      '{subj}では、{ph}を少しずつ確かなものにしてきています。',
-      '{subj}の学習では、{ph}が育ってきています。'
-    ],
-    second: [
-      'また、{subj}でも{ph}が身についてきています。',
-      '{subj}においても、{ph}が着実に育っています。',
-      'さらに、{subj}では{ph}を生かして学習に取り組みました。'
-    ],
-    alsoSame: [
-      'また、{ph}も確かに身についています。',
-      'あわせて、{ph}も十分に育っています。'
-    ],
-    growth: [
-      '{subj}では、{from}に比べて理解が深まり、着実に力を伸ばしています。',
-      '{subj}の学習では、{from}よりもさらに力を伸ばすことができました。'
-    ],
-    steady: [
-      '{subjs}の学習でも、学んだことを確実に身につけています。',
-      '{subjs}でも、安定した理解を示しています。'
-    ],
-    challenge: [
-      '{subj}では、{ph}を、これからさらに伸ばしていきたいところです。くり返し取り組むことで、確かな力にしていけるよう支援していきます。',
-      '{subj}では、{ph}をさらに高めていくことが今後の目標です。一つ一つ確かめながら学習を進められるよう、声をかけていきます。'
-    ],
-    challengeSame: [
-      'また、{ph}を、これからさらに伸ばしていきたいところです。くり返し取り組むことで、確かな力にしていけるよう支援していきます。',
-      'あわせて、{ph}をさらに高めていくことが今後の目標です。一つ一つ確かめながら学習を進められるよう、声をかけていきます。'
-    ],
-    close: [
-      'これからも、得意なことを生かして、さまざまな学習に意欲的に取り組んでいけるよう励ましていきます。',
-      '今後も自分のよさを生かしながら、学習に取り組んでいけるよう見守っていきます。',
-      'これからの学習でも、自信をもって取り組めるよう応援していきます。'
-    ]
-  };
-  var TARGET = { short: 100, normal: 200, long: 300 };
-  SL.SHOKEN_TARGET = TARGET;
-
-  /**
-   * テストの結果から所見の下書きを作る。名前・点数・順位は書かない。
-   * opts = { seed, length: 'short'|'normal'|'long', includeChallenge }
-   */
-  SL.shoken = function (profile, opts) {
-    opts = opts || {};
-    var seed = (opts.seed || 0) + profile.idx;
-    var target = TARGET[opts.length] || TARGET.normal;
-    var parts = [];
-    var used = {};
-    var first = profile.strengths[0];
-    if (first) {
-      used[first.subject] = true;
-      var v = { subj: first.subject, ph: phraseOf(first.subject, first.label), unit: first.unit };
-      parts.push({ p: 0, s: fill(pick(first.unit ? T.strongUnit : T.strong, seed, 0), v) });
-    } else if (profile.best) {
-      used[profile.best.subject] = true;
-      parts.push({ p: 0, s: fill(pick(T.best, seed, 0), { subj: profile.best.subject, ph: phraseOf(profile.best.subject, profile.best.label) }) });
-    }
-    var sec = profile.strengths.filter(function (x) { return !used[x.subject]; })[0];
-    if (sec) {
-      used[sec.subject] = true;
-      parts.push({ p: 2, s: fill(pick(T.second, seed, 1), { subj: sec.subject, ph: phraseOf(sec.subject, sec.label) }) });
-    } else if (first && profile.strengths[1] && phraseOf(first.subject, profile.strengths[1].label) !== phraseOf(first.subject, first.label)) {
-      // 同じ教科のもう1つの観点
-      parts.push({ p: 2, s: fill(pick(T.alsoSame, seed, 1), { ph: phraseOf(first.subject, profile.strengths[1].label) }) });
-    }
-    var g = profile.growth.filter(function (x) { return !used[x.subject]; })[0] || profile.growth[0];
-    if (g) { used[g.subject] = true; parts.push({ p: 1, s: fill(pick(T.growth, seed, 2), { subj: g.subject, from: g.from }) }); }
-    // ほかにも学級と同じくらい以上によくできている教科があれば、まとめて書く
-    var steady = profile.subjects.filter(function (sm) {
-      return !used[sm.name] && sm.rate !== null && sm.rate >= 80 && sm.rate >= sm.classRate - 2;
-    }).map(function (sm) { return sm.name; });
-    if (steady.length) parts.push({ p: 2.5, s: fill(pick(T.steady, seed, 5), { subjs: steady.slice(0, 3).join('や') }) });
-    if (opts.includeChallenge !== false && profile.challenges[0]) {
-      var c = profile.challenges[0];
-      var lead = first || profile.best;
-      var same = lead && lead.subject === c.subject;
-      parts.push({ p: 3, s: fill(pick(same ? T.challengeSame : T.challenge, seed, 3), { subj: c.subject, ph: phraseOf(c.subject, c.label) }) });
-    }
-    var close = { p: 4, s: pick(T.close, seed, 4) };
-    // 大事な順（とくい→のび→ふたつめ→課題）に、目安の字数におさまるだけ入れる。しめの文は入れば入れる
-    var chosen = [];
-    var len = 0;
-    parts.slice().sort(function (a, b) { return a.p - b.p; }).forEach(function (x, i) {
-      if (i === 0 || len + x.s.length <= target * 1.1) { chosen.push(x); len += x.s.length; }
-    });
-    if (!chosen.length || len + close.s.length <= target * 1.15) chosen.push(close);
-    // 書く順は「よいところ→ふたつめ→のび→課題→しめ」
-    var order = [0, 2, 1, 2.5, 3, 4];
-    chosen.sort(function (a, b) { return order.indexOf(a.p) - order.indexOf(b.p); });
-    return chosen.map(function (x) { return x.s; }).join('');
-  };
-
-  // ================= 教科ごとの所見（観点に沿った具体的な下書き） =================
+  // ================= 成績から見たようす（教科ごと・観点に沿って具体的に） =================
   // よくできた・課題の線は、学期の成績で決めた「評価の基準」（A になる ○%以上・C になる ○%未満）をそのまま使う。
-  // そうすると、成績の ABC と所見の書きぶりがそろい、懇談で話がぶれない。
+  // そうすると、成績の ABC と「ようす」の書きぶりがそろい、懇談で話がぶれない。
 
   /** 1人・1教科・1時期の、単元×観点ごとの到達率（学級平均と、その単元の学期の基準も）。 */
   function unitCells(cd, sub, sk, term) {
@@ -657,7 +554,7 @@
     });
     return cells;
   }
-  /** 観点の名前（所見に書く形）。 */
+  /** 観点の名前（ようすに書く形）。 */
   function kName(label) { var t = kantenType(label); return t === 'think' ? '思考・判断・表現' : t === 'know' ? '知識・技能' : label; }
   /** まとめのテストより、単元のテストを先に選ぶ。 */
   function pickCell(cells, score) {
@@ -691,8 +588,8 @@
       '{subj}では、{ks}のどちらの問題も安定してよくできています。中でも「{unit}」の{k}の問題では、{top}。'
     ],
     allCBest: [
-      '{subj}の「{unit}」の学習では、{k}の問題で力を発揮しました。',
-      '{subj}の「{unit}」の学習では、{k}の問題がよく答えられていました。'
+      '{subj}の「{unit}」の学習では、{k}の問題は、ほかの単元よりもよく答えられていました。',
+      '{subj}では、「{unit}」の{k}の問題に、ほかの単元よりもよく答えられていました。'
     ],
     allCTry: [
       '{subj}では、まだ身についていないところがありますが、「{unit}」の{k}の問題は、ほかの問題よりも答えられていました。',
@@ -721,24 +618,23 @@
     think: [
       '考えたことを言葉や図に表して説明する場面を大切にし、考える力を伸ばしていけるよう支援していきます。',
       '問題文を読み取り、自分の考えを書き表す練習を重ねていけるよう支援していきます。'
-    ],
-    none: ['{subj}は、まだテストの結果がないため、成績からは下書きを作れません。']
+    ]
   };
   /** 課題の観点に合わせた手立ての文。 */
   function tedate(type, seed) { return pick(type === 'think' ? TS.think : TS.know, seed, 7); }
   var SUBJ_TARGET = { short: 1, normal: 2, long: 3 };
 
   /**
-   * 1人・1教科・1時期の所見の下書き。型（type）は
+   * 1人・1教科・1時期の「成績から見たようす」。型（type）は
    * allA（どれもよくできている）／split（観点でばらつく）／mixed（単元でばらつく）／steady（おおむねできている）／allC（全体的にきびしい）／none（テストの結果がない）。
    * opts = { seed, length: 'short'|'normal'|'long' }。名前・点数・順位は書かない。
    */
-  SL.subjectShoken = function (cd, sub, sk, term, opts) {
+  SL.subjectYosu = function (cd, sub, sk, term, opts) {
     opts = opts || {};
     var seed = opts.seed || 0, n = SUBJ_TARGET[opts.length] || SUBJ_TARGET.normal;
     var subj = sub.name;
     var cells = unitCells(cd, sub, sk, term);
-    if (!cells.length) return { subject: subj, type: 'none', text: fill(TS.none[0], { subj: subj }) };
+    if (!cells.length) return null;
     var ev = SL.evalFor(cd, sub, sk, term);
     var finals = {};
     ev.kanten.forEach(function (x) { if (cells.some(function (c) { return c.label === x.label; }) && /^[ABC]$/.test(x.final || '')) finals[x.label] = x.final; });
@@ -803,127 +699,13 @@
     var out = n <= 1 ? parts.slice(0, 1) : parts;
     return { subject: subj, type: type, text: out.join('') };
   };
-  /** テストをした教科ごとの所見（教科の並びはアプリの教科の順）。 */
-  SL.shokenBySubject = function (cd, sk, term, opts) {
+  /** テストの結果がある教科ごとの「成績から見たようす」（教科の並びはアプリの教科の順）。 */
+  SL.yosuBySubject = function (cd, sk, term, opts) {
     var idx = 0;
     cd.students.forEach(function (x, i) { if (x.key === sk) idx = i; });
-    return cd.subjects.filter(function (sub) { return SL.testsOf(cd, sub.name, term).length; })
-      .map(function (sub, i) { return SL.subjectShoken(cd, sub, sk, term, { seed: (opts && opts.seed || 0) + idx + i, length: opts && opts.length }); });
+    return cd.subjects.map(function (sub, i) { return SL.subjectYosu(cd, sub, sk, term, { seed: (opts && opts.seed || 0) + idx + i, length: opts && opts.length }); })
+      .filter(function (x) { return x; });
   };
-  /** 教科ごとの所見を1つの文にする（【国語】… の行に分ける）。 */
-  SL.shokenText = function (list) {
-    return list.map(function (x) { return '【' + x.subject + '】' + x.text; }).join('\n');
-  };
-
-  function levelWord(diff) {
-    return diff >= 10 ? '学級の中でもとても高い' : diff >= 4 ? '学級の中では高め' : diff > -4 ? '学級と同じくらい' : diff > -10 ? '学級の中では少し低め' : '学級の中では低め';
-  }
-  function absWord(rt) {
-    return rt >= 90 ? 'ほとんどできている' : rt >= 80 ? 'よくできている' : rt >= 60 ? 'おおむねできている' : 'まだ身についていないところがある';
-  }
-
-  /**
-   * AI（Gemini など）に貼りつけて所見を頼むための文。名前・番号・点数は入れない（言葉での程度だけ）。
-   * opts = { length, grade }
-   */
-  /** 1人ぶんの「テストの結果のまとめ」の行（名前・番号・点数・% は入れない）。 */
-  function summaryLines(profile) {
-    var L = [];
-    profile.subjects.forEach(function (sm) {
-      if (sm.rate === null) return;
-      var ks = sm.kanten.filter(function (k) { return k.rate !== null && k.classRate !== null; })
-        .map(function (k) { return k.label + 'は' + levelWord(k.rate - k.classRate); });
-      L.push('・' + sm.name + '：全体として' + absWord(sm.rate) + '（' + levelWord(sm.rate - sm.classRate) + '）。' + (ks.length ? ks.join('、') + '。' : ''));
-    });
-    if (profile.strengths.length) L.push('とくいなところ：' + profile.strengths.map(function (x) { return x.subject + '「' + x.label + '」' + (x.unit ? '（単元「' + x.unit + '」）' : ''); }).join('、'));
-    if (profile.growth.length) L.push('のびてきたところ：' + profile.growth.map(function (x) { return x.subject + '（' + x.from + 'より学級の中での位置が上がった）'; }).join('、'));
-    if (profile.challenges.length) L.push('これから伸ばしたいところ：' + profile.challenges.map(function (x) { return x.subject + '「' + x.label + '」'; }).join('、'));
-    if (!L.length) L.push('・この時期のテストの結果はまだありません。');
-    return L;
-  }
-  /** 学級の中での記号（児童01・児童02…）。名簿の順。 */
-  SL.aiCode = function (i) { return '児童' + (i + 1 < 10 ? '0' : '') + (i + 1); };
-
-  /**
-   * 学級全員ぶんを、一度に AI（Gemini など）に頼む文。名前・番号・点数は入れず、「児童01」などの記号だけ。
-   * 返事は「【児童01】」で始まる形にしてもらい、SL.parseAiReply で一人ひとりに振り分ける。
-   */
-  SL.aiPromptClass = function (profiles, opts) {
-    opts = opts || {};
-    var n = TARGET[opts.length] || TARGET.normal;
-    var L = [];
-    L.push('あなたは小学校の担任の先生です。次の「テストの結果のまとめ」をもとに、' + profiles.length + '人ぶんの通知表の所見の下書きを、1人' + n + '字くらいで書いてください。');
-    L.push('');
-    L.push('【書き方のきまり】');
-    L.push('・かならず「【児童01】」のように、記号を【】でかこんだ行のすぐあとに、その子の所見を書いてください。記号の順に、全員ぶん書いてください。');
-    L.push('・所見のほかの文（あいさつ・説明・見出し）は書かないでください。');
-    L.push('・子どもの名前は書かないでください（「〇〇さん」も不要です）。記号（児童01など）も所見の文の中には書かないでください。');
-    L.push('・点数・順位・ほかの子との比べ方は書かないでください。');
-    L.push('・よいところを中心に書き、課題は前向きな言葉で1つまでにしてください。');
-    L.push('・テストの結果からわかることだけを書き、授業中の様子など、わからないことは作らないでください。');
-    L.push('・保護者が読んでわかる、やわらかい言葉にしてください。一人ひとり、言い回しを変えてください。');
-    L.push('・途中で切れたときは、「続き」と言われたら、続きの記号から書いてください。');
-    L.push('');
-    L.push('【テストの結果のまとめ】' + (opts.grade ? '（学年：' + opts.grade + '・' : '（') + '時期：' + (profiles[0] ? profiles[0].term : '') + '）');
-    profiles.forEach(function (p, i) {
-      L.push('');
-      L.push('【' + SL.aiCode(i) + '】');
-      summaryLines(p).forEach(function (x) { L.push(x); });
-    });
-    return L.join('\n');
-  };
-
-  /** AI の返事を「【児童01】…」ごとに分ける。返す: { '0': 文, '1': 文, … }（名簿の何番目か） */
-  SL.parseAiReply = function (text) {
-    var s = String(text || '').replace(/\r\n?/g, '\n').replace(/[［\[]/g, '【').replace(/[］\]]/g, '】')
-      .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
-    var re = /【\s*児童\s*(\d{1,3})\s*】/g;
-    var marks = [], m;
-    while ((m = re.exec(s))) marks.push({ i: Number(m[1]) - 1, start: m.index, end: re.lastIndex });
-    var out = {};
-    marks.forEach(function (mk, k) {
-      var body = s.slice(mk.end, k + 1 < marks.length ? marks[k + 1].start : s.length)
-        .replace(/^[\s:：]+/, '').replace(/\*\*/g, '').replace(/\n{3,}/g, '\n\n').trim();
-      if (mk.i >= 0 && body) out[mk.i] = body.slice(0, 800);
-    });
-    return out;
-  };
-
-  SL.aiPrompt = function (profile, opts) {
-    opts = opts || {};
-    var n = TARGET[opts.length] || TARGET.normal;
-    var L = [];
-    L.push('あなたは小学校の担任の先生です。次の「テストの結果のまとめ」をもとに、通知表の所見の下書きを' + n + '字くらいで1つ書いてください。');
-    L.push('');
-    L.push('【書き方のきまり】');
-    L.push('・子どもの名前は書かないでください（「〇〇さん」も不要です）。');
-    L.push('・点数・順位・ほかの子との比べ方は書かないでください。');
-    L.push('・よいところを中心に書き、課題は前向きな言葉で1つまでにしてください。');
-    L.push('・テストの結果からわかることだけを書き、授業中の様子など、わからないことは作らないでください。先生が書き足すとよい所は【　】で示してください。');
-    L.push('・保護者が読んでわかる、やわらかい言葉にしてください。');
-    L.push('');
-    L.push('【テストの結果のまとめ】');
-    if (opts.grade) L.push('学年：' + opts.grade);
-    L.push('時期：' + profile.term);
-    profile.subjects.forEach(function (sm) {
-      if (sm.rate === null) return;
-      var ks = sm.kanten.filter(function (k) { return k.rate !== null && k.classRate !== null; })
-        .map(function (k) { return k.label + 'は' + levelWord(k.rate - k.classRate); });
-      L.push('・' + sm.name + '：全体として' + absWord(sm.rate) + '（' + levelWord(sm.rate - sm.classRate) + '）。' + (ks.length ? ks.join('、') + '。' : ''));
-    });
-    if (profile.strengths.length) {
-      L.push('とくいなところ：' + profile.strengths.map(function (x) { return x.subject + '「' + x.label + '」' + (x.unit ? '（単元「' + x.unit + '」）' : ''); }).join('、'));
-    }
-    if (profile.growth.length) {
-      L.push('のびてきたところ：' + profile.growth.map(function (x) { return x.subject + '（' + x.from + 'より学級の中での位置が上がった）'; }).join('、'));
-    }
-    if (profile.challenges.length) {
-      L.push('これから伸ばしたいところ：' + profile.challenges.map(function (x) { return x.subject + '「' + x.label + '」'; }).join('、'));
-    }
-    return L.join('\n');
-  };
-
-
   root.SL = SL;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>

@@ -13,7 +13,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.13.0';
+var APP_VERSION = '2.14.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -41,12 +41,10 @@ var SCHEMA = {
   manual: ['key', 'studentEmail', 'subject', 'term', 'field', 'value', 'updatedAt', 'updatedBy'],
   /** 評価の基準（クラス×教科×学期）と評定の表（クラス×教科・term は「評定」）。value は JSON。 */
   criteria: ['key', 'classKey', 'subject', 'term', 'value', 'updatedAt', 'updatedBy'],
-  /** 所見（クラスごとのシート shoken_<classKey>）。 */
-  shoken: ['key', 'studentEmail', 'term', 'text', 'updatedAt', 'updatedBy'],
   /** 消したテストと、その点数の控え（まちがえて消したときに戻せるように残す）。test・scores は JSON。 */
   trash: ['key', 'classKey', 'subject', 'term', 'test', 'scores', 'deletedAt', 'deletedBy']
 };
-var CLASS_SHEETS = { scores: 'scores_', manual: 'manual_', shoken: 'shoken_' };
+var CLASS_SHEETS = { scores: 'scores_', manual: 'manual_' };
 
 /** 学期の名前。 */
 var TERM_LABELS = { '3学期制': ['1学期', '2学期', '3学期'], '2学期制': ['前期', '後期'] };
@@ -54,7 +52,7 @@ var YEAR_TERM = '1年間';
 /** criteria シートで、評定の表の行に使う term。 */
 var HYOTEI_RULE_TERM = '評定';
 
-var MAX_LEN = { testName: 40, shoken: 2000, subject: 20, kanten: 30, schoolName: 60 };
+var MAX_LEN = { testName: 40, subject: 20, kanten: 30, schoolName: 60 };
 var MAX_TESTS_PER_TERM = 40;
 var MAX_POINT = 1000;
 var MAX_CHANGES = 5000;
@@ -124,7 +122,7 @@ function defaultSubjectsForGrade_(grade) {
  */
 var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'getPeers', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
   'saveCriteria', 'saveHyoteiRule', 'copyCriteriaToClasses', 'previewSmileImport', 'importSmile',
-  'saveShoken', 'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
+  'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
 var ADMIN_FUNCTIONS = ['setup', 'startFiscalYear', 'closeFiscalYear'];
 var ENTRY_FUNCTIONS = ['doGet'];
 

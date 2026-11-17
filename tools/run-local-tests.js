@@ -275,7 +275,7 @@ run('L08 初期値の教科（学年ごと）', () => {
   ok(!ctx.defaultSubjectsForGrade_(2)[0].hyoteiYear && ctx.defaultSubjectsForGrade_(3)[0].hyoteiYear, '評定は3年から');
 });
 
-run('L12 個票のプロフィールと所見の下書き（名前・数字が入らない）', () => {
+run('L12 個票のプロフィールと成績から見たようす（名前・数字が入らない）', () => {
   const cd = cdOf();
   cd.students.push({ key: 'c', no: 3, name: 'う' });
   cd.scores.t1.b = { '知識・技能': 20, '漢字': 20, '思考・判断・表現': 40 };
@@ -287,27 +287,15 @@ run('L12 個票のプロフィールと所見の下書き（名前・数字が�
   const y = SL.profile(cd, 'a', '1年間');
   eq(y.subjects[0].units.length, 3);
   ['short', 'normal', 'long'].forEach((len) => {
-    const t = SL.shoken(p, { seed: 1, length: len, includeChallenge: true });
-    ok(t.length > 30 && t.indexOf('{') === -1 && t.indexOf('undefined') === -1, t);
-    ok(!/[0-9０-９%％]/.test(t.replace(/[123]学期/g, '')), '数字: ' + t);
-    ok(t.indexOf('あ') === -1 || !/あさん/.test(t));
+    SL.yosuBySubject(cd, 'a', '1学期', { length: len }).forEach((x) => {
+      const t = x.text;
+      ok(t.length > 20 && t.indexOf('{') === -1 && t.indexOf('undefined') === -1, t);
+      ok(!/[0-9０-９%％]/.test(t.replace(/[123]学期|①|②|③/g, '')), '数字: ' + t);
+      ok(!/あさん|いさん|うさん/.test(t));
+    });
   });
-  const ai = SL.aiPrompt(p, { grade: '3年' });
-  ok(ai.indexOf('名前は書かないで') !== -1 && !/\d+%/.test(ai));
   const pb = SL.profile(cd, 'b', '1学期');
   ok(pb.challenges.length >= 1, 'のびしろが出る');
-});
-
-run('L13 学級全員分の AI の文（名前・番号・点数なし）と返事の振り分け', () => {
-  const cd = cdOf();
-  cd.students.forEach((x, i) => { x.name = 'みほん' + i; });
-  const ps = cd.students.map((x) => SL.profile(cd, x.key, '1学期'));
-  const t = SL.aiPromptClass(ps, { grade: '3年' });
-  ok(t.indexOf('【児童01】') !== -1 && t.indexOf('【児童02】') !== -1);
-  ok(t.indexOf('みほん') === -1, '名前が入っている');
-  ok(!/\d+(\.\d+)?%/.test(t), '% が入っている');
-  const got = SL.parseAiReply('はい、書きます。\n\n**【児童01】**\n国語ではよく理解しています。\n\n［児童０２］：算数もがんばっています。\n【児童9】\n');
-  eq(got, { 0: '国語ではよく理解しています。', 1: '算数もがんばっています。' });
 });
 
 run('P01 SMILE から取りこむ: 見出しから読み、番号と名前で子どもを合わせる', () => {
@@ -403,7 +391,7 @@ run('G03 GG の学年ごとの教科の並び（1〜6年の GG の見出しと�
   });
 });
 
-run('K01 教科ごとの所見: 型の分け方（基準は学期の評価の基準 80/60）と観点の書き方', () => {
+run('K01 成績から見たようす: 型の分け方（基準は学期の評価の基準 80/60）と観点の書き方', () => {
   const rika = JSON.parse(JSON.stringify(g3.filter((s) => s.name === '理科')[0]));
   const mk = (rows) => {
     const cd = cdOf();
@@ -413,7 +401,7 @@ run('K01 教科ごとの所見: 型の分け方（基準は学期の評価の基
       { testId: 'r2', subject: '理科', term: '1学期', order: 2, name: '植物の発芽', points: { '知識・技能': 50, '思考・判断・表現': 50 } }
     ];
     cd.scores = { r1: { a: rows[0], b: { '知識・技能': 35, '思考・判断・表現': 35 } }, r2: { a: rows[1], b: { '知識・技能': 35, '思考・判断・表現': 35 } } };
-    return SL.subjectShoken(cd, rika, 'a', '1学期', { length: 'normal' });
+    return SL.subjectYosu(cd, rika, 'a', '1学期', { length: 'normal' });
   };
   const allA = mk([{ '知識・技能': 50, '思考・判断・表現': 48 }, { '知識・技能': 46, '思考・判断・表現': 45 }]);
   eq(allA.type, 'allA'); ok(/知識・技能と思考・判断・表現/.test(allA.text), allA.text);
@@ -423,16 +411,16 @@ run('K01 教科ごとの所見: 型の分け方（基準は学期の評価の基
   eq(allC.type, 'allC'); ok(!/できていない/.test(allC.text), allC.text);
   const mixed = mk([{ '知識・技能': 48, '思考・判断・表現': 40 }, { '知識・技能': 25, '思考・判断・表現': 40 }]);
   eq(mixed.type, 'mixed'); ok(/つまずき|十分に力を発揮できません/.test(mixed.text), mixed.text);
-  const none = (() => { const cd = cdOf(); cd.subjects = [rika]; cd.tests = [{ testId: 'r1', subject: '理科', term: '1学期', order: 1, name: 'x', points: { '知識・技能': 50 } }]; cd.scores = {}; return SL.subjectShoken(cd, rika, 'a', '1学期'); })();
-  eq(none.type, 'none');
+  const none = (() => { const cd = cdOf(); cd.subjects = [rika]; cd.tests = [{ testId: 'r1', subject: '理科', term: '1学期', order: 1, name: 'x', points: { '知識・技能': 50 } }]; cd.scores = {}; return SL.subjectYosu(cd, rika, 'a', '1学期'); })();
+  eq(none, null, 'テストの結果がない教科は出さない');
   const short = mk([{ '知識・技能': 48, '思考・判断・表現': 10 }, { '知識・技能': 45, '思考・判断・表現': 20 }]);
   ok(!/\d+%|\d+点/.test(split.text + allA.text + allC.text + mixed.text), '点数や%が入っている');
 });
-run('K02 教科ごとの所見をまとめた文と、テストのない教科は出さない', () => {
+run('K02 ようすはテストの結果がある教科だけ', () => {
   const cd = cdOf();
-  const list = SL.shokenBySubject(cd, 'a', '1学期', { length: 'short' });
+  const list = SL.yosuBySubject(cd, 'a', '1学期', { length: 'short' });
   eq(list.map((x) => x.subject), ['国語']);
-  ok(/^【国語】/.test(SL.shokenText(list)));
+
 });
 
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');

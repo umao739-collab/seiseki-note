@@ -376,6 +376,10 @@
   .ktag.good { background: #FFF4CF; } .ktag.grow { background: #E7F3DF; } .ktag.miss { background: #F1EBDC; color: var(--ink-soft); }
   .kmsg { margin-top: 12px; border: 2px solid var(--board); border-radius: 6px; padding: 10px 14px; font-size: 14.5px; line-height: 1.9; }
   .kmsg h4 { margin: 0 0 4px; color: var(--board); }
+  .kyosu { display: flex; gap: 10px; align-items: flex-start; padding: 6px 0; border-top: 1px dashed var(--line); }
+  .kyosu:first-of-type { border-top: none; }
+  .kyosu .kpill { flex: none; font-size: 13px; margin-top: 4px; min-width: 3.5em; text-align: center; }
+  .kyosu p { margin: 0; }
   .kfoot { margin-top: 10px; font-size: 11px; color: #A89C8A; display: flex; justify-content: space-between; }
   .ggbar { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; background: #F3F8EF; border: 2px dashed #9CC98F; border-radius: 6px; padding: 10px 14px; margin: 0 0 14px; }
 
@@ -422,7 +426,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.13.0';
+var APP_VERSION = '2.14.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -450,12 +454,10 @@ var SCHEMA = {
   manual: ['key', 'studentEmail', 'subject', 'term', 'field', 'value', 'updatedAt', 'updatedBy'],
   /** 評価の基準（クラス×教科×学期）と評定の表（クラス×教科・term は「評定」）。value は JSON。 */
   criteria: ['key', 'classKey', 'subject', 'term', 'value', 'updatedAt', 'updatedBy'],
-  /** 所見（クラスごとのシート shoken_<classKey>）。 */
-  shoken: ['key', 'studentEmail', 'term', 'text', 'updatedAt', 'updatedBy'],
   /** 消したテストと、その点数の控え（まちがえて消したときに戻せるように残す）。test・scores は JSON。 */
   trash: ['key', 'classKey', 'subject', 'term', 'test', 'scores', 'deletedAt', 'deletedBy']
 };
-var CLASS_SHEETS = { scores: 'scores_', manual: 'manual_', shoken: 'shoken_' };
+var CLASS_SHEETS = { scores: 'scores_', manual: 'manual_' };
 
 /** 学期の名前。 */
 var TERM_LABELS = { '3学期制': ['1学期', '2学期', '3学期'], '2学期制': ['前期', '後期'] };
@@ -463,7 +465,7 @@ var YEAR_TERM = '1年間';
 /** criteria シートで、評定の表の行に使う term。 */
 var HYOTEI_RULE_TERM = '評定';
 
-var MAX_LEN = { testName: 40, shoken: 2000, subject: 20, kanten: 30, schoolName: 60 };
+var MAX_LEN = { testName: 40, subject: 20, kanten: 30, schoolName: 60 };
 var MAX_TESTS_PER_TERM = 40;
 var MAX_POINT = 1000;
 var MAX_CHANGES = 5000;
@@ -533,7 +535,7 @@ function defaultSubjectsForGrade_(grade) {
  */
 var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'getPeers', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
   'saveCriteria', 'saveHyoteiRule', 'copyCriteriaToClasses', 'previewSmileImport', 'importSmile',
-  'saveShoken', 'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
+  'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
 var ADMIN_FUNCTIONS = ['setup', 'startFiscalYear', 'closeFiscalYear'];
 var ENTRY_FUNCTIONS = ['doGet'];
 
@@ -685,7 +687,7 @@ function validateTests_(tests, subjectConf) {
   });
 }
 
-// ================= 点数・手で入れる値・所見 =================
+// ================= 点数・手で入れる値 =================
 
 /**
  * 点数の変更の検査。changes = [{studentEmail, testId, kanten, value}]。
@@ -740,18 +742,6 @@ function validateManualChanges_(changes, students, subjects, terms) {
   });
 }
 
-function validateShokenItems_(items, students, terms) {
-  checkArray_(items, MAX_CHANGES);
-  var termsOk = terms.concat([YEAR_TERM]);
-  return items.map(function (it) {
-    checkObject_(it);
-    var e = normEmail_(it.studentEmail);
-    if (students.indexOf(e) === -1) throw appError_('名簿にない児童です。');
-    var term = String(it.term);
-    if (termsOk.indexOf(term) === -1) throw appError_('時期が正しくありません。');
-    return { studentEmail: e, term: term, text: checkText_(it.text, MAX_LEN.shoken, '所見', true) };
-  });
-}
 
 /** 担任・担当の割り当ての検査。classes = [{classKey, homeroom, assistants:[]}]。 */
 function normalizeAssignments_(classes, schoolClasses, staff) {
@@ -915,7 +905,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     'demo.admin@example.com': { role: 'admin', name: 'アプリ管理者' }
   };
   var gradeSubjects = { 3: defaultSubjectsForGrade_(3) };
-  var tests = [], scores = {}, manual = {}, shoken = {};
+  var tests = [], scores = {}, manual = {};
   function addTests(ck, subject, term, defs) {
     defs.forEach(function (d, i) { tests.push({ testId: Utilities.getUuid(), classKey: ck, subject: subject, term: term, order: i + 1, name: d[0], points: d[1] }); });
   }
@@ -1003,12 +993,10 @@ function validateHyoteiRule_(rule, subjectConf) {
       tests.filter(function (t) { return t.classKey === c; }).forEach(function (t) { sc[t.testId] = JSON.parse(JSON.stringify(scores[t.testId] || {})); });
       var mn = {};
       Object.keys(manual).forEach(function (k) { if (em.indexOf(k.split('|')[0]) !== -1 && manual[k] !== '') mn[k] = manual[k]; });
-      var sh = {};
-      Object.keys(shoken).forEach(function (k) { if (em.indexOf(k.split('|')[0]) !== -1) sh[k] = shoken[k]; });
       var cr = critOf(c);
       return { criteria: cr.criteria, hyoteiRules: cr.hyoteiRules, peers: null, classKey: c, label: classLabel_(c), grade: gradeOf_(c), termSystem: school.termSystem, terms: terms,
         students: classes[c].map(function (s) { return { key: s.email, no: s.number, name: s.name }; }),
-        subjects: gradeSubjects[gradeOf_(c)], tests: testsOf(c), scores: sc, manual: mn, shoken: sh,
+        subjects: gradeSubjects[gradeOf_(c)], tests: testsOf(c), scores: sc, manual: mn,
         sameGrade: a.classes.filter(function (k) { return k !== c && gradeOf_(k) === gradeOf_(c); }).map(function (k) { return { classKey: k, label: classLabel_(k) }; }),
         canEditSubjects: a.isSetup };
     },
@@ -1091,11 +1079,6 @@ function validateHyoteiRule_(rule, subjectConf) {
         manual[k] = x.value;
       });
       return { savedAt: '2026-11-15 10:00:00', count: changes.length - conflicts.length, conflicts: conflicts };
-    },
-    saveShoken: function (ck, items, actingAs) {
-      var a = actor(actingAs); var c = cls(a, ck);
-      validateShokenItems_(items, emails(c), terms).forEach(function (x) { shoken[x.studentEmail + '|' + x.term] = { text: x.text, at: '2026-11-15 10:00' }; });
-      return { savedAt: '2026-11-15 10:00:00', count: items.length };
     },
     getSchoolSetup: function (actingAs) {
       var a = actor(actingAs);
@@ -1517,7 +1500,7 @@ function validateHyoteiRule_(rule, subjectConf) {
   };
 
 
-  // ================= 個票・所見 =================
+  // ================= 個票 =================
   var STRONG_RATE = 85, WEAK_RATE = 70;
   var TEST_UNIT_RE = /たしかめ|まとめ|テスト|ふくしゅう|復習|総合/;
   function pick(arr, seed, salt) { return arr[Math.abs((seed || 0) + (salt || 0)) % arr.length]; }
@@ -1609,7 +1592,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     return out.sort(function (x, y) { return y.diff - x.diff; });
   }
 
-  /** 1人のプロフィール（個票・所見のもと）。term は学期か「1年間」。 */
+  /** 1人のプロフィール（個票のもと）。term は学期か「1年間」。 */
   SL.profile = function (cd, sk, term) {
     var idx = 0, st = null;
     cd.students.forEach(function (x, i) { if (x.key === sk) { idx = i; st = x; } });
@@ -1656,112 +1639,9 @@ function validateHyoteiRule_(rule, subjectConf) {
   }
   SL.phraseOf = phraseOf;
 
-  var T = {
-    strongUnit: [
-      '{subj}の「{unit}」の学習では、{ph}がしっかりと身についており、確かな理解を示しました。',
-      '{subj}では、{ph}に優れています。「{unit}」の学習でも、学んだことを生かして問題に取り組むことができました。',
-      '「{unit}」の学習では、{ph}を発揮し、{subj}の学習に自信をもって取り組むことができました。'
-    ],
-    strong: [
-      '{subj}では、{ph}が確かに身についています。',
-      '{subj}の学習では、{ph}を十分に発揮することができました。',
-      '{subj}では、{ph}に優れ、安定した理解を示しています。'
-    ],
-    best: [
-      '{subj}では、{ph}を少しずつ確かなものにしてきています。',
-      '{subj}の学習では、{ph}が育ってきています。'
-    ],
-    second: [
-      'また、{subj}でも{ph}が身についてきています。',
-      '{subj}においても、{ph}が着実に育っています。',
-      'さらに、{subj}では{ph}を生かして学習に取り組みました。'
-    ],
-    alsoSame: [
-      'また、{ph}も確かに身についています。',
-      'あわせて、{ph}も十分に育っています。'
-    ],
-    growth: [
-      '{subj}では、{from}に比べて理解が深まり、着実に力を伸ばしています。',
-      '{subj}の学習では、{from}よりもさらに力を伸ばすことができました。'
-    ],
-    steady: [
-      '{subjs}の学習でも、学んだことを確実に身につけています。',
-      '{subjs}でも、安定した理解を示しています。'
-    ],
-    challenge: [
-      '{subj}では、{ph}を、これからさらに伸ばしていきたいところです。くり返し取り組むことで、確かな力にしていけるよう支援していきます。',
-      '{subj}では、{ph}をさらに高めていくことが今後の目標です。一つ一つ確かめながら学習を進められるよう、声をかけていきます。'
-    ],
-    challengeSame: [
-      'また、{ph}を、これからさらに伸ばしていきたいところです。くり返し取り組むことで、確かな力にしていけるよう支援していきます。',
-      'あわせて、{ph}をさらに高めていくことが今後の目標です。一つ一つ確かめながら学習を進められるよう、声をかけていきます。'
-    ],
-    close: [
-      'これからも、得意なことを生かして、さまざまな学習に意欲的に取り組んでいけるよう励ましていきます。',
-      '今後も自分のよさを生かしながら、学習に取り組んでいけるよう見守っていきます。',
-      'これからの学習でも、自信をもって取り組めるよう応援していきます。'
-    ]
-  };
-  var TARGET = { short: 100, normal: 200, long: 300 };
-  SL.SHOKEN_TARGET = TARGET;
-
-  /**
-   * テストの結果から所見の下書きを作る。名前・点数・順位は書かない。
-   * opts = { seed, length: 'short'|'normal'|'long', includeChallenge }
-   */
-  SL.shoken = function (profile, opts) {
-    opts = opts || {};
-    var seed = (opts.seed || 0) + profile.idx;
-    var target = TARGET[opts.length] || TARGET.normal;
-    var parts = [];
-    var used = {};
-    var first = profile.strengths[0];
-    if (first) {
-      used[first.subject] = true;
-      var v = { subj: first.subject, ph: phraseOf(first.subject, first.label), unit: first.unit };
-      parts.push({ p: 0, s: fill(pick(first.unit ? T.strongUnit : T.strong, seed, 0), v) });
-    } else if (profile.best) {
-      used[profile.best.subject] = true;
-      parts.push({ p: 0, s: fill(pick(T.best, seed, 0), { subj: profile.best.subject, ph: phraseOf(profile.best.subject, profile.best.label) }) });
-    }
-    var sec = profile.strengths.filter(function (x) { return !used[x.subject]; })[0];
-    if (sec) {
-      used[sec.subject] = true;
-      parts.push({ p: 2, s: fill(pick(T.second, seed, 1), { subj: sec.subject, ph: phraseOf(sec.subject, sec.label) }) });
-    } else if (first && profile.strengths[1] && phraseOf(first.subject, profile.strengths[1].label) !== phraseOf(first.subject, first.label)) {
-      // 同じ教科のもう1つの観点
-      parts.push({ p: 2, s: fill(pick(T.alsoSame, seed, 1), { ph: phraseOf(first.subject, profile.strengths[1].label) }) });
-    }
-    var g = profile.growth.filter(function (x) { return !used[x.subject]; })[0] || profile.growth[0];
-    if (g) { used[g.subject] = true; parts.push({ p: 1, s: fill(pick(T.growth, seed, 2), { subj: g.subject, from: g.from }) }); }
-    // ほかにも学級と同じくらい以上によくできている教科があれば、まとめて書く
-    var steady = profile.subjects.filter(function (sm) {
-      return !used[sm.name] && sm.rate !== null && sm.rate >= 80 && sm.rate >= sm.classRate - 2;
-    }).map(function (sm) { return sm.name; });
-    if (steady.length) parts.push({ p: 2.5, s: fill(pick(T.steady, seed, 5), { subjs: steady.slice(0, 3).join('や') }) });
-    if (opts.includeChallenge !== false && profile.challenges[0]) {
-      var c = profile.challenges[0];
-      var lead = first || profile.best;
-      var same = lead && lead.subject === c.subject;
-      parts.push({ p: 3, s: fill(pick(same ? T.challengeSame : T.challenge, seed, 3), { subj: c.subject, ph: phraseOf(c.subject, c.label) }) });
-    }
-    var close = { p: 4, s: pick(T.close, seed, 4) };
-    // 大事な順（とくい→のび→ふたつめ→課題）に、目安の字数におさまるだけ入れる。しめの文は入れば入れる
-    var chosen = [];
-    var len = 0;
-    parts.slice().sort(function (a, b) { return a.p - b.p; }).forEach(function (x, i) {
-      if (i === 0 || len + x.s.length <= target * 1.1) { chosen.push(x); len += x.s.length; }
-    });
-    if (!chosen.length || len + close.s.length <= target * 1.15) chosen.push(close);
-    // 書く順は「よいところ→ふたつめ→のび→課題→しめ」
-    var order = [0, 2, 1, 2.5, 3, 4];
-    chosen.sort(function (a, b) { return order.indexOf(a.p) - order.indexOf(b.p); });
-    return chosen.map(function (x) { return x.s; }).join('');
-  };
-
-  // ================= 教科ごとの所見（観点に沿った具体的な下書き） =================
+  // ================= 成績から見たようす（教科ごと・観点に沿って具体的に） =================
   // よくできた・課題の線は、学期の成績で決めた「評価の基準」（A になる ○%以上・C になる ○%未満）をそのまま使う。
-  // そうすると、成績の ABC と所見の書きぶりがそろい、懇談で話がぶれない。
+  // そうすると、成績の ABC と「ようす」の書きぶりがそろい、懇談で話がぶれない。
 
   /** 1人・1教科・1時期の、単元×観点ごとの到達率（学級平均と、その単元の学期の基準も）。 */
   function unitCells(cd, sub, sk, term) {
@@ -1793,7 +1673,7 @@ function validateHyoteiRule_(rule, subjectConf) {
     });
     return cells;
   }
-  /** 観点の名前（所見に書く形）。 */
+  /** 観点の名前（ようすに書く形）。 */
   function kName(label) { var t = kantenType(label); return t === 'think' ? '思考・判断・表現' : t === 'know' ? '知識・技能' : label; }
   /** まとめのテストより、単元のテストを先に選ぶ。 */
   function pickCell(cells, score) {
@@ -1827,8 +1707,8 @@ function validateHyoteiRule_(rule, subjectConf) {
       '{subj}では、{ks}のどちらの問題も安定してよくできています。中でも「{unit}」の{k}の問題では、{top}。'
     ],
     allCBest: [
-      '{subj}の「{unit}」の学習では、{k}の問題で力を発揮しました。',
-      '{subj}の「{unit}」の学習では、{k}の問題がよく答えられていました。'
+      '{subj}の「{unit}」の学習では、{k}の問題は、ほかの単元よりもよく答えられていました。',
+      '{subj}では、「{unit}」の{k}の問題に、ほかの単元よりもよく答えられていました。'
     ],
     allCTry: [
       '{subj}では、まだ身についていないところがありますが、「{unit}」の{k}の問題は、ほかの問題よりも答えられていました。',
@@ -1857,24 +1737,23 @@ function validateHyoteiRule_(rule, subjectConf) {
     think: [
       '考えたことを言葉や図に表して説明する場面を大切にし、考える力を伸ばしていけるよう支援していきます。',
       '問題文を読み取り、自分の考えを書き表す練習を重ねていけるよう支援していきます。'
-    ],
-    none: ['{subj}は、まだテストの結果がないため、成績からは下書きを作れません。']
+    ]
   };
   /** 課題の観点に合わせた手立ての文。 */
   function tedate(type, seed) { return pick(type === 'think' ? TS.think : TS.know, seed, 7); }
   var SUBJ_TARGET = { short: 1, normal: 2, long: 3 };
 
   /**
-   * 1人・1教科・1時期の所見の下書き。型（type）は
+   * 1人・1教科・1時期の「成績から見たようす」。型（type）は
    * allA（どれもよくできている）／split（観点でばらつく）／mixed（単元でばらつく）／steady（おおむねできている）／allC（全体的にきびしい）／none（テストの結果がない）。
    * opts = { seed, length: 'short'|'normal'|'long' }。名前・点数・順位は書かない。
    */
-  SL.subjectShoken = function (cd, sub, sk, term, opts) {
+  SL.subjectYosu = function (cd, sub, sk, term, opts) {
     opts = opts || {};
     var seed = opts.seed || 0, n = SUBJ_TARGET[opts.length] || SUBJ_TARGET.normal;
     var subj = sub.name;
     var cells = unitCells(cd, sub, sk, term);
-    if (!cells.length) return { subject: subj, type: 'none', text: fill(TS.none[0], { subj: subj }) };
+    if (!cells.length) return null;
     var ev = SL.evalFor(cd, sub, sk, term);
     var finals = {};
     ev.kanten.forEach(function (x) { if (cells.some(function (c) { return c.label === x.label; }) && /^[ABC]$/.test(x.final || '')) finals[x.label] = x.final; });
@@ -1939,127 +1818,13 @@ function validateHyoteiRule_(rule, subjectConf) {
     var out = n <= 1 ? parts.slice(0, 1) : parts;
     return { subject: subj, type: type, text: out.join('') };
   };
-  /** テストをした教科ごとの所見（教科の並びはアプリの教科の順）。 */
-  SL.shokenBySubject = function (cd, sk, term, opts) {
+  /** テストの結果がある教科ごとの「成績から見たようす」（教科の並びはアプリの教科の順）。 */
+  SL.yosuBySubject = function (cd, sk, term, opts) {
     var idx = 0;
     cd.students.forEach(function (x, i) { if (x.key === sk) idx = i; });
-    return cd.subjects.filter(function (sub) { return SL.testsOf(cd, sub.name, term).length; })
-      .map(function (sub, i) { return SL.subjectShoken(cd, sub, sk, term, { seed: (opts && opts.seed || 0) + idx + i, length: opts && opts.length }); });
+    return cd.subjects.map(function (sub, i) { return SL.subjectYosu(cd, sub, sk, term, { seed: (opts && opts.seed || 0) + idx + i, length: opts && opts.length }); })
+      .filter(function (x) { return x; });
   };
-  /** 教科ごとの所見を1つの文にする（【国語】… の行に分ける）。 */
-  SL.shokenText = function (list) {
-    return list.map(function (x) { return '【' + x.subject + '】' + x.text; }).join('\n');
-  };
-
-  function levelWord(diff) {
-    return diff >= 10 ? '学級の中でもとても高い' : diff >= 4 ? '学級の中では高め' : diff > -4 ? '学級と同じくらい' : diff > -10 ? '学級の中では少し低め' : '学級の中では低め';
-  }
-  function absWord(rt) {
-    return rt >= 90 ? 'ほとんどできている' : rt >= 80 ? 'よくできている' : rt >= 60 ? 'おおむねできている' : 'まだ身についていないところがある';
-  }
-
-  /**
-   * AI（Gemini など）に貼りつけて所見を頼むための文。名前・番号・点数は入れない（言葉での程度だけ）。
-   * opts = { length, grade }
-   */
-  /** 1人ぶんの「テストの結果のまとめ」の行（名前・番号・点数・% は入れない）。 */
-  function summaryLines(profile) {
-    var L = [];
-    profile.subjects.forEach(function (sm) {
-      if (sm.rate === null) return;
-      var ks = sm.kanten.filter(function (k) { return k.rate !== null && k.classRate !== null; })
-        .map(function (k) { return k.label + 'は' + levelWord(k.rate - k.classRate); });
-      L.push('・' + sm.name + '：全体として' + absWord(sm.rate) + '（' + levelWord(sm.rate - sm.classRate) + '）。' + (ks.length ? ks.join('、') + '。' : ''));
-    });
-    if (profile.strengths.length) L.push('とくいなところ：' + profile.strengths.map(function (x) { return x.subject + '「' + x.label + '」' + (x.unit ? '（単元「' + x.unit + '」）' : ''); }).join('、'));
-    if (profile.growth.length) L.push('のびてきたところ：' + profile.growth.map(function (x) { return x.subject + '（' + x.from + 'より学級の中での位置が上がった）'; }).join('、'));
-    if (profile.challenges.length) L.push('これから伸ばしたいところ：' + profile.challenges.map(function (x) { return x.subject + '「' + x.label + '」'; }).join('、'));
-    if (!L.length) L.push('・この時期のテストの結果はまだありません。');
-    return L;
-  }
-  /** 学級の中での記号（児童01・児童02…）。名簿の順。 */
-  SL.aiCode = function (i) { return '児童' + (i + 1 < 10 ? '0' : '') + (i + 1); };
-
-  /**
-   * 学級全員ぶんを、一度に AI（Gemini など）に頼む文。名前・番号・点数は入れず、「児童01」などの記号だけ。
-   * 返事は「【児童01】」で始まる形にしてもらい、SL.parseAiReply で一人ひとりに振り分ける。
-   */
-  SL.aiPromptClass = function (profiles, opts) {
-    opts = opts || {};
-    var n = TARGET[opts.length] || TARGET.normal;
-    var L = [];
-    L.push('あなたは小学校の担任の先生です。次の「テストの結果のまとめ」をもとに、' + profiles.length + '人ぶんの通知表の所見の下書きを、1人' + n + '字くらいで書いてください。');
-    L.push('');
-    L.push('【書き方のきまり】');
-    L.push('・かならず「【児童01】」のように、記号を【】でかこんだ行のすぐあとに、その子の所見を書いてください。記号の順に、全員ぶん書いてください。');
-    L.push('・所見のほかの文（あいさつ・説明・見出し）は書かないでください。');
-    L.push('・子どもの名前は書かないでください（「〇〇さん」も不要です）。記号（児童01など）も所見の文の中には書かないでください。');
-    L.push('・点数・順位・ほかの子との比べ方は書かないでください。');
-    L.push('・よいところを中心に書き、課題は前向きな言葉で1つまでにしてください。');
-    L.push('・テストの結果からわかることだけを書き、授業中の様子など、わからないことは作らないでください。');
-    L.push('・保護者が読んでわかる、やわらかい言葉にしてください。一人ひとり、言い回しを変えてください。');
-    L.push('・途中で切れたときは、「続き」と言われたら、続きの記号から書いてください。');
-    L.push('');
-    L.push('【テストの結果のまとめ】' + (opts.grade ? '（学年：' + opts.grade + '・' : '（') + '時期：' + (profiles[0] ? profiles[0].term : '') + '）');
-    profiles.forEach(function (p, i) {
-      L.push('');
-      L.push('【' + SL.aiCode(i) + '】');
-      summaryLines(p).forEach(function (x) { L.push(x); });
-    });
-    return L.join('\n');
-  };
-
-  /** AI の返事を「【児童01】…」ごとに分ける。返す: { '0': 文, '1': 文, … }（名簿の何番目か） */
-  SL.parseAiReply = function (text) {
-    var s = String(text || '').replace(/\r\n?/g, '\n').replace(/[［\[]/g, '【').replace(/[］\]]/g, '】')
-      .replace(/[０-９]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0xFEE0); });
-    var re = /【\s*児童\s*(\d{1,3})\s*】/g;
-    var marks = [], m;
-    while ((m = re.exec(s))) marks.push({ i: Number(m[1]) - 1, start: m.index, end: re.lastIndex });
-    var out = {};
-    marks.forEach(function (mk, k) {
-      var body = s.slice(mk.end, k + 1 < marks.length ? marks[k + 1].start : s.length)
-        .replace(/^[\s:：]+/, '').replace(/\*\*/g, '').replace(/\n{3,}/g, '\n\n').trim();
-      if (mk.i >= 0 && body) out[mk.i] = body.slice(0, 800);
-    });
-    return out;
-  };
-
-  SL.aiPrompt = function (profile, opts) {
-    opts = opts || {};
-    var n = TARGET[opts.length] || TARGET.normal;
-    var L = [];
-    L.push('あなたは小学校の担任の先生です。次の「テストの結果のまとめ」をもとに、通知表の所見の下書きを' + n + '字くらいで1つ書いてください。');
-    L.push('');
-    L.push('【書き方のきまり】');
-    L.push('・子どもの名前は書かないでください（「〇〇さん」も不要です）。');
-    L.push('・点数・順位・ほかの子との比べ方は書かないでください。');
-    L.push('・よいところを中心に書き、課題は前向きな言葉で1つまでにしてください。');
-    L.push('・テストの結果からわかることだけを書き、授業中の様子など、わからないことは作らないでください。先生が書き足すとよい所は【　】で示してください。');
-    L.push('・保護者が読んでわかる、やわらかい言葉にしてください。');
-    L.push('');
-    L.push('【テストの結果のまとめ】');
-    if (opts.grade) L.push('学年：' + opts.grade);
-    L.push('時期：' + profile.term);
-    profile.subjects.forEach(function (sm) {
-      if (sm.rate === null) return;
-      var ks = sm.kanten.filter(function (k) { return k.rate !== null && k.classRate !== null; })
-        .map(function (k) { return k.label + 'は' + levelWord(k.rate - k.classRate); });
-      L.push('・' + sm.name + '：全体として' + absWord(sm.rate) + '（' + levelWord(sm.rate - sm.classRate) + '）。' + (ks.length ? ks.join('、') + '。' : ''));
-    });
-    if (profile.strengths.length) {
-      L.push('とくいなところ：' + profile.strengths.map(function (x) { return x.subject + '「' + x.label + '」' + (x.unit ? '（単元「' + x.unit + '」）' : ''); }).join('、'));
-    }
-    if (profile.growth.length) {
-      L.push('のびてきたところ：' + profile.growth.map(function (x) { return x.subject + '（' + x.from + 'より学級の中での位置が上がった）'; }).join('、'));
-    }
-    if (profile.challenges.length) {
-      L.push('これから伸ばしたいところ：' + profile.challenges.map(function (x) { return x.subject + '「' + x.label + '」'; }).join('、'));
-    }
-    return L.join('\n');
-  };
-
-
   root.SL = SL;
 })(typeof window !== 'undefined' ? window : globalThis);
 </script>
@@ -2667,7 +2432,7 @@ function validateHyoteiRule_(rule, subjectConf) {
   // ================= クラス =================
   var CLASS_TABS = [
     ['tests', '📚', 'テストの登録', 't1'], ['scores', '✏️', '点数を入れる', 't2'], ['term', '🌸', '学期の成績', 't3'],
-    ['year', '📖', '要録（1年間）', 't4'], ['kohyo', '📄', '個票・所見', 't5']
+    ['year', '📖', '要録（1年間）', 't4'], ['kohyo', '📄', '個票', 't5']
   ];
   function viewClass() {
     var cd = S.cd;
@@ -3333,11 +3098,11 @@ function validateHyoteiRule_(rule, subjectConf) {
   }
 
 
-  // ================= 個票・所見 =================
+  // ================= 個票 =================
   var SUBJECT_COLOR = { '国語': '#D9667F', '社会': '#D9822F', '算数': '#2F76B4', '理科': '#3F8A4D', '生活': '#7FA640',
     '音楽': '#8C6BC2', '図工': '#C99A1E', '家庭': '#C47452', '体育': '#2E9AA8', '外国語': '#5E6FC2' };
   function colorOf(name) { return SUBJECT_COLOR[name] || '#8C7663'; }
-  var K = { avg: true, shoken: true, length: 'normal', radar: 'subject', drafts: {}, seeds: {} };
+  var K = { avg: true, length: 'normal', radar: 'subject' };
 
   /** レーダーチャート（教科ごとの到達率。点線は学級平均）。 */
   function radar(p, showAvg) {
@@ -3385,17 +3150,11 @@ function validateHyoteiRule_(rule, subjectConf) {
         showAvg && avg !== null && avg !== undefined ? h('span', { class: 'kavg', title: '学級平均 ' + pct(avg) + '%', style: { left: 'calc(' + Math.min(100, avg) + '% - 1px)' } }) : null),
       h('span', { class: 'kv' }, rt === null || rt === undefined ? '—' : pct(rt) + '%'));
   }
-  function shokenOf(sk, term) {
-    var k = sk + '|' + term;
-    if (K.drafts[k] !== undefined) return K.drafts[k];
-    var sv = (S.cd.shoken || {})[k];
-    return sv ? sv.text : '';
-  }
   /** 個票（画面と印刷で同じ形）。 */
   function kohyoSheet(p) {
     var cd = S.cd;
     function li(x) { return h('li', null, h('b', null, x.subject), '「' + SL.shortLabel(x.label) + '」' + (x.unit ? '（' + x.unit + '）' : '')); }
-    var text = K.shoken ? shokenOf(p.key, p.term) : '';
+    var yosu = SL.yosuBySubject(cd, p.key, p.term, { length: K.length });
     return h('div', { class: 'ksheet' },
       h('div', { class: 'khead' },
         h('div', null, h('div', { class: 'kribbon' }, '学習のようす'), h('div', { class: 'muted small' }, (p.term === YEAR ? '1年間' : p.term) + '・テストの結果から')),
@@ -3422,7 +3181,8 @@ function validateHyoteiRule_(rule, subjectConf) {
               h('span', { class: 'kur' }, u.rate === null ? '' : pct(u.rate) + '%'));
           }), sm.units.length > shown.length ? h('div', { class: 'muted small' }, '…ほか ' + (sm.units.length - shown.length) + '単元') : null));
       })),
-      text ? h('div', { class: 'kmsg' }, h('h4', null, '成績から見たようす'), h('div', { style: { whiteSpace: 'pre-wrap' } }, text)) : null,
+      yosu.length ? h('div', { class: 'kmsg' }, h('h4', null, '成績から見たようす'),
+        yosu.map(function (x) { return h('div', { class: 'kyosu' }, h('span', { class: 'kpill', style: { background: colorOf(x.subject) } }, x.subject), h('p', null, x.text)); })) : null,
       h('div', { class: 'kfoot' }, h('span', null, K.avg ? '点線・｜は学級平均です' : ''), h('span', null, 'せいせきノート')));
   }
   function printSheets(list) {
@@ -3430,10 +3190,6 @@ function validateHyoteiRule_(rule, subjectConf) {
     clear(pr);
     list.forEach(function (st) { pr.appendChild(kohyoSheet(SL.profile(S.cd, st.key, S.term))); });
     setTimeout(function () { window.print(); }, 60);
-  }
-  function makeDraft(sk) {
-    var k = sk + '|' + S.term;
-    return SL.shokenText(SL.shokenBySubject(S.cd, sk, S.term, { seed: K.seeds[k] || 0, length: K.length }));
   }
   function viewKohyo() {
     var cd = S.cd;
@@ -3444,19 +3200,13 @@ function validateHyoteiRule_(rule, subjectConf) {
     if (!S.ksel || !cd.students.some(function (x) { return x.key === S.ksel; })) S.ksel = cd.students[0].key;
     var st = cd.students.filter(function (x) { return x.key === S.ksel; })[0];
     var p = SL.profile(cd, st.key, S.term);
-    var key = st.key + '|' + S.term;
-    function dot(x) {
-      var k = x.key + '|' + S.term, sv = (cd.shoken || {})[k];
-      if (K.drafts[k] !== undefined && (!sv || sv.text !== K.drafts[k])) return 'draft';
-      return sv && sv.text ? 'saved' : '';
-    }
     function move(d) {
       var i = cd.students.indexOf(st), n = cd.students[Math.max(0, Math.min(cd.students.length - 1, i + d))];
       S.ksel = n.key; render();
     }
     var roster = h('div', { class: 'roster' }, cd.students.map(function (x) {
       return h('button', { class: S.ksel === x.key ? 'on' : '', onclick: function () { S.ksel = x.key; render(); } },
-        h('span', { class: 'no' }, x.no), h('span', null, x.name), h('span', { class: 'dot ' + dot(x) }));
+        h('span', { class: 'no' }, x.no), h('span', null, x.name));
     }));
     var tools = h('div', { class: 'card row', style: { padding: '10px 14px', marginBottom: '12px' } },
       h('button', { class: 'btn plain', onclick: function () { move(-1); } }, '◀ 前の子'),
@@ -3467,104 +3217,16 @@ function validateHyoteiRule_(rule, subjectConf) {
           onclick: function () { K.radar = m[0]; render(); } }, m[1]);
       })),
       h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: K.avg, onchange: function (e) { K.avg = e.target.checked; render(); } }), '学級平均も出す'),
-      h('label', { class: 'check' }, h('input', { type: 'checkbox', checked: K.shoken, onchange: function (e) { K.shoken = e.target.checked; render(); } }), '所見も入れる'),
+      h('span', { class: 'small muted' }, 'ようす'),
+      h('div', { class: 'seg' }, [['short', '短め'], ['normal', 'ふつう'], ['long', '長め']].map(function (l) {
+        return h('button', { class: K.length === l[0] ? 'on' : '', onclick: function () { K.length = l[0]; render(); } }, l[1]);
+      })),
       h('span', { class: 'spacer' }),
       h('button', { class: 'btn sora', onclick: function () { printSheets([st]); } }, '🖨 この子を印刷'),
       h('button', { class: 'btn', onclick: function () { printSheets(cd.students); } }, '🖨 全員を印刷'));
 
-    // 所見の下書き
-    var counter = h('span', { class: 'muted small' });
-    var ta = h('textarea', { class: 'text kta', 'aria-label': '所見', maxlength: 2000, placeholder: '「✨ 下書きをつくる」をおすと、テストをした教科ごとに、観点に沿った所見の下書きが入ります（【国語】… の行ごと）。そのまま直せます。' });
-    ta.value = shokenOf(st.key, S.term);
-    var perSubject = h('div', { class: 'subjcopy' });
-    function upd() {
-      counter.textContent = ta.value.length + '字';
-      // 【教科】ではじまる行ごとに、コピーのボタンを出す（GG や通知表に教科ごとに貼れるように）
-      clear(perSubject);
-      ta.value.split('\n').forEach(function (line) {
-        var m = /^【([^】]+)】(.*)$/.exec(line);
-        if (!m || !m[2].trim()) return;
-        perSubject.appendChild(h('button', { class: 'btn plain small', title: m[2], onclick: function () { copyText(m[2].trim(), m[1] + 'の所見をコピーしました'); } }, '📋 ' + m[1]));
-      });
-    }
-    ta.addEventListener('input', function () { K.drafts[key] = ta.value; upd(); });
-    upd();
-    function setDraft(t) { K.drafts[key] = t; render(); }
-    function saveItems(items, msg) {
-      return call('saveShoken', cd.classKey, items).then(function (r) {
-        items.forEach(function (it) { cd.shoken[it.studentEmail + '|' + it.term] = { text: it.text, at: r.savedAt }; delete K.drafts[it.studentEmail + '|' + it.term]; });
-        toast(msg); render();
-      }).catch(fail);
-    }
-    var sv = (cd.shoken || {})[key];
-    var editor = h('div', { class: 'card', style: { marginTop: '14px' } },
-      h('h2', null, h('span', { class: 'wash sora' }, '所見（成績から見たようす）'), h('span', { class: 'sub' }, st.no + '番 ' + st.name + '・' + S.term)),
-      h('div', { class: 'row', style: { marginBottom: '8px' } },
-        h('div', { class: 'seg' }, [['short', '短め'], ['normal', 'ふつう'], ['long', '長め']].map(function (l) {
-          return h('button', { class: K.length === l[0] ? 'on' : '', onclick: function () { K.length = l[0]; setDraft(makeDraft(st.key)); } }, l[1]);
-        })),
-        h('span', { class: 'spacer' }),
-        h('button', { class: 'btn', onclick: function () { setDraft(makeDraft(st.key)); } }, '✨ 下書きをつくる'),
-        h('button', { class: 'btn plain', onclick: function () { K.seeds[key] = (K.seeds[key] || 0) + 1; setDraft(makeDraft(st.key)); } }, '🔁 別の言い方')),
-      ta,
-      h('div', { class: 'row small', style: { marginTop: '6px', gap: '6px' } }, h('span', { class: 'muted' }, '教科ごとにコピー：'), perSubject),
-      h('div', { class: 'row', style: { marginTop: '6px' } }, counter, h('span', { class: 'spacer' }), sv ? h('span', { class: 'muted small' }, '💾 ' + sv.at + ' に保存') : null),
-      h('div', { class: 'row', style: { marginTop: '10px' } },
-        h('button', { class: 'btn wakaba', onclick: function () { saveItems([{ studentEmail: st.key, term: S.term, text: ta.value }], st.name + 'さんの所見を保存しました'); } }, '💾 保存する'),
-        h('button', { class: 'btn plain', onclick: function () { copyText(ta.value, 'コピーしました'); } }, '📋 コピー'),
-        h('button', { class: 'btn plain', onclick: function () { copyText(SL.aiPrompt(p, { length: K.length, grade: cd.grade + '年' }), 'AIに頼む文をコピーしました（名前・点数は入っていません）'); } }, '🤖 AIに頼む文をコピー')),
-      h('p', { class: 'muted small', style: { marginBottom: 0 } }, '※ 下書きはテストの結果だけをもとにしています。よくできた・課題の線は、学期の成績の「評価の基準」と同じです。授業中の様子など、先生にしかわからないことを書き足してください。'),
-      h('div', { class: 'row', style: { marginTop: '10px', paddingTop: '10px', borderTop: '2px dashed var(--line)' } },
-        h('span', { class: 'muted small' }, h('span', { class: 'dot saved', style: { display: 'inline-block', marginRight: '4px' } }), '保存ずみ　', h('span', { class: 'dot draft', style: { display: 'inline-block', margin: '0 4px 0 6px' } }), '保存していない下書き'),
-        h('span', { class: 'spacer' }),
-        h('button', { class: 'btn plain', onclick: function () {
-          var n = 0;
-          cd.students.forEach(function (x) { var k = x.key + '|' + S.term; if (K.drafts[k] !== undefined || ((cd.shoken || {})[k] || {}).text) return; K.drafts[k] = makeDraft(x.key); n++; });
-          toast(n ? n + '人ぶんの下書きを作りました（まだ書いていない子だけ）' : 'みんな、もう下書きか保存ずみです'); render();
-        } }, '✨ 全員の下書きをいっきに'),
-        h('button', { class: 'btn wakaba', onclick: function () {
-          var items = [];
-          cd.students.forEach(function (x) { var k = x.key + '|' + S.term; if (K.drafts[k] === undefined) return; var o = (cd.shoken || {})[k]; if (o && o.text === K.drafts[k]) return; items.push({ studentEmail: x.key, term: S.term, text: K.drafts[k] }); });
-          if (!items.length) { toast('保存していない下書きはありません'); return; }
-          saveItems(items, items.length + '人ぶんの所見を保存しました');
-        } }, '💾 下書きをまとめて保存')));
-    // 学級全員分を AI（Gemini）に頼む
-    var reply = h('textarea', { class: 'text kta', 'aria-label': 'AIの返事', placeholder: 'Gemini の返事（【児童01】… の形）を、まるごとここに貼りつけてください。' });
-    var aiBox = h('details', { class: 'card crit-card', style: { marginTop: '14px' } },
-      h('summary', null, h('span', { class: 'wash fuji' }, '🤖 学級全員分を AI（Gemini）に頼む'), h('span', { class: 'muted small' }, '　' + S.term)),
-      h('ol', { class: 'steps small' },
-        h('li', null, '下の「① 全員分の文をコピー」をおす（名前・番号・点数は入りません。「児童01」などの記号だけです）'),
-        h('li', null, 'Gemini（学校のアカウント）に貼りつけて送る'),
-        h('li', null, '返ってきた文をまるごとコピーして、下の欄に貼り、「② 下書きに振り分ける」をおす（途中で切れたら、Gemini に「続き」と送り、続きも貼り足してください）'),
-        h('li', null, '一人ずつ見て直し、「💾 下書きをまとめて保存」で保存する')),
-      h('div', { class: 'row', style: { margin: '8px 0' } },
-        h('button', { class: 'btn fuji', onclick: function () {
-          var profiles = cd.students.map(function (x) { return SL.profile(cd, x.key, S.term); });
-          copyText(SL.aiPromptClass(profiles, { length: K.length, grade: cd.grade + '年' }), cd.students.length + '人ぶんの文をコピーしました。Gemini に貼りつけてください');
-        } }, '① 全員分の文をコピー'),
-        h('span', { class: 'muted small' }, '1人あたりの長さは、上の「短め・ふつう・長め」のとおりです。')),
-      reply,
-      h('div', { class: 'row', style: { marginTop: '8px' } }, h('span', { class: 'spacer' }),
-        h('button', { class: 'btn wakaba', onclick: function () {
-          var got = SL.parseAiReply(reply.value);
-          var idx = Object.keys(got).map(Number).filter(function (i) { return i < cd.students.length; });
-          if (!idx.length) { toast('「【児童01】」の形の文が見つかりませんでした。Gemini の返事をまるごと貼ってください。', true); return; }
-          var over = idx.filter(function (i) { var k = cd.students[i].key + '|' + S.term; return K.drafts[k] !== undefined || ((cd.shoken || {})[k] || {}).text; }).length;
-          (over ? ask('もう所見がある子がいます', h('p', null, idx.length + '人ぶんのうち ' + over + '人は、もう下書きか保存した所見があります。AI の文で上書きしますか？'),
-            [['やめる', false, 'plain'], ['上書きしない子だけ入れる', 'skip', 'plain'], ['上書きする', true, 'sakura']]) : Promise.resolve(true)).then(function (ok) {
-            if (!ok) return;
-            var n = 0;
-            idx.forEach(function (i) {
-              var k = cd.students[i].key + '|' + S.term;
-              if (ok === 'skip' && (K.drafts[k] !== undefined || ((cd.shoken || {})[k] || {}).text)) return;
-              K.drafts[k] = got[i]; n++;
-            });
-            var missing = cd.students.length - idx.length;
-            toast(n + '人ぶんを下書きに入れました（まだ保存していません）' + (missing > 0 ? '　まだの子: ' + missing + '人' : ''));
-            render();
-          });
-        } }, '② 下書きに振り分ける')));
-    return h('div', null, bar, h('div', { class: 'ksplit' }, roster, h('div', null, tools, kohyoSheet(p), editor, aiBox)));
+    return h('div', null, bar, h('div', { class: 'ksplit' }, roster, h('div', null, tools, kohyoSheet(p),
+      h('p', { class: 'muted small' }, '※「成績から見たようす」は、テストの結果がある教科だけを、学期の成績の「評価の基準」で書いています。'))));
   }
 
   // ================= 学校の設定（設定担当） =================

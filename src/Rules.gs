@@ -127,7 +127,7 @@ function validateTests_(tests, subjectConf) {
   });
 }
 
-// ================= 点数・手で入れる値・所見 =================
+// ================= 点数・手で入れる値 =================
 
 /**
  * 点数の変更の検査。changes = [{studentEmail, testId, kanten, value}]。
@@ -182,18 +182,6 @@ function validateManualChanges_(changes, students, subjects, terms) {
   });
 }
 
-function validateShokenItems_(items, students, terms) {
-  checkArray_(items, MAX_CHANGES);
-  var termsOk = terms.concat([YEAR_TERM]);
-  return items.map(function (it) {
-    checkObject_(it);
-    var e = normEmail_(it.studentEmail);
-    if (students.indexOf(e) === -1) throw appError_('名簿にない児童です。');
-    var term = String(it.term);
-    if (termsOk.indexOf(term) === -1) throw appError_('時期が正しくありません。');
-    return { studentEmail: e, term: term, text: checkText_(it.text, MAX_LEN.shoken, '所見', true) };
-  });
-}
 
 /** 担任・担当の割り当ての検査。classes = [{classKey, homeroom, assistants:[]}]。 */
 function normalizeAssignments_(classes, schoolClasses, staff) {

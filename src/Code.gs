@@ -80,7 +80,7 @@ function bootstrap(actingAs) {
   });
 }
 
-/** クラスの成績のデータ（名簿・教科・テスト・点数・手で入れた値・所見）。 */
+/** クラスの成績のデータ（名簿・教科・テスト・点数・手で入れた値）。 */
 function getClassData(classKey, actingAs) {
   return guard_(function () {
     var ctx = getContext_(actingAs);
@@ -97,17 +97,13 @@ function getClassData(classKey, actingAs) {
       if (cc.emails.indexOf(r.studentEmail) === -1 || r.value === '') return;
       manual[[r.studentEmail, r.subject, r.term, r.field].join('|')] = r.value;
     });
-    var shoken = {};
-    Store.list(cc.fileId, Store.classSheet('shoken', cc.classKey)).forEach(function (r) {
-      if (cc.emails.indexOf(r.studentEmail) === -1) return;
-      shoken[r.studentEmail + '|' + r.term] = { text: r.text, at: r.updatedAt };
-    });
+
     var crit = criteriaOf_(cc.fileId, cc.classKey);
     return {
       criteria: crit.criteria, hyoteiRules: crit.hyoteiRules, peers: null,
       classKey: cc.classKey, label: classLabel_(cc.classKey), grade: cc.grade, termSystem: cc.school.termSystem, terms: cc.terms,
       students: cc.students.map(function (s) { return { key: s.email, no: s.number, name: s.name }; }),
-      subjects: cc.subjects, tests: testsOfClass_(cc.fileId, cc.classKey), scores: scores, manual: manual, shoken: shoken,
+      subjects: cc.subjects, tests: testsOfClass_(cc.fileId, cc.classKey), scores: scores, manual: manual,
       sameGrade: ctx.actor.classes.filter(function (k) { return k !== cc.classKey && gradeOf_(k) === cc.grade; })
         .map(function (k) { return { classKey: k, label: classLabel_(k) }; }),
       canEditSubjects: !!ctx.actor.isSetup
@@ -369,20 +365,6 @@ function saveManual(classKey, changes, actingAs) {
       return next;
     });
     return { savedAt: now, count: list.length - conflicts.length, conflicts: conflictOut_(conflicts, cc) };
-  });
-}
-
-/** 所見を保存する。 */
-function saveShoken(classKey, items, actingAs) {
-  return guard_(function () {
-    var ctx = getContext_(actingAs);
-    var cc = classContext_(ctx, classKey);
-    var list = validateShokenItems_(items, cc.emails, cc.terms);
-    var now = now_();
-    Store.upsert(cc.fileId, Store.classSheet('shoken', cc.classKey), function (o) { return o.key; }, list.map(function (c) {
-      return { key: c.studentEmail + '|' + c.term, studentEmail: c.studentEmail, term: c.term, text: c.text, updatedAt: now, updatedBy: ctx.me };
-    }));
-    return { savedAt: now, count: list.length };
   });
 }
 

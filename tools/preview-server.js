@@ -29,7 +29,7 @@
     'demo.admin@example.com': { role: 'admin', name: 'アプリ管理者' }
   };
   var gradeSubjects = { 3: defaultSubjectsForGrade_(3) };
-  var tests = [], scores = {}, manual = {}, shoken = {};
+  var tests = [], scores = {}, manual = {};
   function addTests(ck, subject, term, defs) {
     defs.forEach(function (d, i) { tests.push({ testId: Utilities.getUuid(), classKey: ck, subject: subject, term: term, order: i + 1, name: d[0], points: d[1] }); });
   }
@@ -117,12 +117,10 @@
       tests.filter(function (t) { return t.classKey === c; }).forEach(function (t) { sc[t.testId] = JSON.parse(JSON.stringify(scores[t.testId] || {})); });
       var mn = {};
       Object.keys(manual).forEach(function (k) { if (em.indexOf(k.split('|')[0]) !== -1 && manual[k] !== '') mn[k] = manual[k]; });
-      var sh = {};
-      Object.keys(shoken).forEach(function (k) { if (em.indexOf(k.split('|')[0]) !== -1) sh[k] = shoken[k]; });
       var cr = critOf(c);
       return { criteria: cr.criteria, hyoteiRules: cr.hyoteiRules, peers: null, classKey: c, label: classLabel_(c), grade: gradeOf_(c), termSystem: school.termSystem, terms: terms,
         students: classes[c].map(function (s) { return { key: s.email, no: s.number, name: s.name }; }),
-        subjects: gradeSubjects[gradeOf_(c)], tests: testsOf(c), scores: sc, manual: mn, shoken: sh,
+        subjects: gradeSubjects[gradeOf_(c)], tests: testsOf(c), scores: sc, manual: mn,
         sameGrade: a.classes.filter(function (k) { return k !== c && gradeOf_(k) === gradeOf_(c); }).map(function (k) { return { classKey: k, label: classLabel_(k) }; }),
         canEditSubjects: a.isSetup };
     },
@@ -205,11 +203,6 @@
         manual[k] = x.value;
       });
       return { savedAt: '2026-11-15 10:00:00', count: changes.length - conflicts.length, conflicts: conflicts };
-    },
-    saveShoken: function (ck, items, actingAs) {
-      var a = actor(actingAs); var c = cls(a, ck);
-      validateShokenItems_(items, emails(c), terms).forEach(function (x) { shoken[x.studentEmail + '|' + x.term] = { text: x.text, at: '2026-11-15 10:00' }; });
-      return { savedAt: '2026-11-15 10:00:00', count: items.length };
     },
     getSchoolSetup: function (actingAs) {
       var a = actor(actingAs);
