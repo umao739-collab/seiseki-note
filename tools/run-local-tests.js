@@ -443,5 +443,21 @@ run('L14 学期の到達率は、テストごとの到達率の平均（満点�
   eq(none.auto, '');
 });
 
+run('K03 ようす: 学期の評価が A でない観点は、1つの単元が A の線をこえても強くほめない', () => {
+  const kat = JSON.parse(JSON.stringify(ctx.defaultSubjectsForGrade_(6).filter((x) => x.name === '家庭')[0]));
+  const cd = cdOf();
+  cd.subjects = [kat];
+  cd.criteria = { '家庭|1学期': { kanten: { '知識・技能': { a: 95, b: 60 }, '思考・判断・表現': { a: 95, b: 60 } } } };
+  cd.tests = [
+    { testId: 'k1', subject: '家庭', term: '1学期', order: 1, name: 'クッキング', points: { '知識・技能': 100, '思考・判断・表現': 50 } },
+    { testId: 'k2', subject: '家庭', term: '1学期', order: 2, name: 'ソーイング', points: { '知識・技能': 100, '思考・判断・表現': 50 } }
+  ];
+  // 知識・技能: クッキング 98%（A の線をこえる）・ソーイング 80% → 学期は 89% で B
+  cd.scores = { k1: { a: { '知識・技能': 98, '思考・判断・表現': 40 }, b: { '知識・技能': 70, '思考・判断・表現': 35 } }, k2: { a: { '知識・技能': 80, '思考・判断・表現': 40 }, b: { '知識・技能': 70, '思考・判断・表現': 35 } } };
+  const y = SL.subjectYosu(cd, kat, 'a', '1学期', { length: 'normal' });
+  ok(!/学級の中でも高い|しっかりと身について|優れて|よくできており/.test(y.text), y.text);
+  ok(/ほかの単元よりもよく答えられて/.test(y.text), y.text);
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);

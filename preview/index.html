@@ -430,7 +430,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.17.0';
+var APP_VERSION = '2.17.1';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -1787,8 +1787,13 @@ function validateHyoteiRule_(rule, subjectConf) {
       '{subj}では、まだ答えられていない問題が多くあります。その中で、「{unit}」の{k}の問題は、ほかの問題よりも答えられていました。'
     ],
     steady: [
-      '{subj}では、{ks}ともにおおむね身についています。特に「{unit}」の{k}の問題がよくできていました。',
-      '{subj}の学習は、{ks}ともにおおむね身についています。「{unit}」では、{k}の問題で力を発揮しました。'
+      '{subj}では、{ks}ともにおおむね身についています。中でも「{unit}」の{k}の問題は、ほかの単元よりもよく答えられていました。',
+      '{subj}の学習は、{ks}ともにおおむね身についています。「{unit}」では、{k}の問題がほかの単元よりもよく答えられていました。'
+    ],
+    // 学期の評価が A でない観点のよかったところは、ほめる強い言葉を使わず、事実だけを書く（通知表の評価と食いちがわないように）
+    relative: [
+      '{subj}の「{unit}」の学習では、{k}の問題は、ほかの単元よりもよく答えられていました。',
+      '{subj}では、「{unit}」の{k}の問題に、ほかの単元よりもよく答えられていました。'
     ]
   };
   var SUBJ_TARGET = { short: 1, normal: 2, long: 3 };
@@ -1859,7 +1864,9 @@ function validateHyoteiRule_(rule, subjectConf) {
         type = 'mixed';
         var s1 = strong.length ? pickCell(strong, function (c) { return c.rate - c.a + c.diff; }) : null;
         var w1 = weak.length ? pickCell(weak, function (c) { return -(c.rate - c.b) - c.diff; }) : null;
-        if (s1) parts.push(fill(pick(s1.diff >= 10 ? TS.strongHigh : TS.strong, seed, 0), { subj: subj, unit: s1.unit, k: kName(s1.label), ph: phraseOf(subj, s1.label) }));
+        // 「よくできた」「学級の中でも高い」などは、学期の評価がその観点で A のときだけ
+        var tplS = finals[s1 && s1.label] === 'A' ? (s1.diff >= 10 ? TS.strongHigh : TS.strong) : TS.relative;
+        if (s1) parts.push(fill(pick(tplS, seed, 0), { subj: subj, unit: s1.unit, k: kName(s1.label), ph: phraseOf(subj, s1.label) }));
         if (w1) {
           parts.push(fill(pick(s1 ? TS.weakAfter : TS.weakOnly, seed, 2), { subj: subj, unit: w1.unit, k: kName(w1.label) }));
         } else parts.push('ほかの単元も、おおむね身についています。');
