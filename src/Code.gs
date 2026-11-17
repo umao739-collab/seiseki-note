@@ -238,7 +238,9 @@ function saveTests(classKey, subject, term, tests, actingAs) {
       // 消す前に、テストと点数の控えを「trash」シートに残す（まちがえて消したときに戻せるように）
       var now = now_();
       var scoreRows = Store.list(cc.fileId, Store.classSheet('scores', cc.classKey), function (r) { return dropped.indexOf(r.testId) !== -1; });
-      Store.upsert(cc.fileId, 'trash', function (o) { return o.key; }, before.filter(function (t) { return dropped.indexOf(t.testId) !== -1; }).map(function (t) {
+      var goneTests = before.filter(function (t) { return dropped.indexOf(t.testId) !== -1; });
+      logHistory_(cc, goneTests.map(function (t) { return { kind: 'test', target: t.testId + '|' + now, field: t.name, before: sub.name + '|' + term, after: '' }; }), ctx.me, now);
+      Store.upsert(cc.fileId, 'trash', function (o) { return o.key; }, goneTests.map(function (t) {
         var sc = {};
         scoreRows.forEach(function (r) { if (r.testId === t.testId) sc[r.studentEmail] = r.values; });
         return { key: t.testId + '|' + now, classKey: cc.classKey, subject: sub.name, term: term,
@@ -307,7 +309,7 @@ function saveScores(classKey, changes, actingAs) {
     });
     list.forEach(function (c) { if (c.base !== undefined) (grouped[c.testId + '|' + c.studentEmail].base = grouped[c.testId + '|' + c.studentEmail].base || {})[c.kanten] = c.base; });
     var now = now_();
-    var conflicts = [];
+    var conflicts = [], hist = [];
     // ロックの中で読み直した値が、画面で読みこんだ値（base）と違うマスは、ほかの人が先に変えたので上書きしない
     Store.upsert(cc.fileId, Store.classSheet('scores', cc.classKey), function (o) { return o.key; },
       Object.keys(grouped).map(function (k) { return grouped[k]; }),
@@ -321,13 +323,122 @@ function saveScores(classKey, changes, actingAs) {
             conflicts.push({ testId: next.testId, studentEmail: next.studentEmail, kanten: l, value: v[l] === undefined ? '' : v[l], by: old ? old.updatedBy : '' });
             return;
           }
+          if (cur !== want) hist.push({ kind: 'score', target: next.testId + '|' + next.studentEmail, field: l, before: cur, after: want });
           if (next.set[l] === '') delete v[l]; else v[l] = next.set[l];
           changed = true;
         });
         if (old && !changed) return old;
         return { key: next.key, testId: next.testId, studentEmail: next.studentEmail, values: JSON.stringify(v), updatedAt: now, updatedBy: ctx.me };
       });
+    logHistory_(cc, hist, ctx.me, now);
     return { savedAt: now, count: list.length - conflicts.length, conflicts: conflictOut_(conflicts, cc) };
+  });
+}
+
+// ================= 変更の記録・もとにもどす =================
+
+/** 変更の記録を、クラスの history シートに足す。 */
+function logHistory_(cc, entries, by, at) {
+  if (!entries.length) return;
+  Store.upsert(cc.fileId, Store.classSheet('history', cc.classKey), function (o) { return o.key; }, entries.map(function (e, i) {
+    return { key: newId_(), kind: e.kind, target: e.target, field: e.field, before: String(e.before === undefined || e.before === null ? '' : e.before),
+      after: String(e.after === undefined || e.after === null ? '' : e.after), at: at, by: by, note: e.note || '' };
+  }));
+}
+var HISTORY_LIMIT_ = 300;
+
+/** クラスの変更の記録（新しい順・最近の300件）。名前・テスト名をつけて返す（メールは返さない）。 */
+function getHistory(classKey, actingAs) {
+  return guard_(function () {
+    var ctx = getContext_(actingAs);
+    var cc = classContext_(ctx, classKey);
+    var rows = Store.list(cc.fileId, Store.classSheet('history', cc.classKey));
+    var undone = {};
+    rows.forEach(function (r) { if (/^undo:/.test(r.note)) undone[r.note.slice(5)] = r.at; });
+    var names = {}, tests = {}, staff = {};
+    cc.students.forEach(function (x) { names[x.email] = x.number + '番 ' + x.name; });
+    testsOfClass_(cc.fileId, cc.classKey).forEach(function (t) { tests[t.testId] = t; });
+    Directory.listStaff(cc.school.schoolId).forEach(function (x) { staff[x.email] = x.name; });
+    var list = rows.slice(-HISTORY_LIMIT_).reverse().map(function (r) {
+      var o = { key: r.key, kind: r.kind, field: r.field, before: r.before, after: r.after, at: r.at,
+        byName: staff[normEmail_(r.by)] || (normEmail_(r.by) === ctx.me ? ctx.actor.name : 'ほかの先生'), undone: undone[r.key] || '', isUndo: /^undo:/.test(r.note) };
+      var p = String(r.target).split('|');
+      if (r.kind === 'score') {
+        var t = tests[p[0]];
+        o.student = names[p[1]] || '（いまの名簿にいない子）';
+        o.where = t ? t.subject + '・' + t.term + '「' + t.name + '」' : '（消したテスト）';
+      } else if (r.kind === 'manual') {
+        o.student = names[p[0]] || '（いまの名簿にいない子）';
+        o.where = p[1] + '・' + p[2];
+      } else if (r.kind === 'test') {
+        var bp = String(r.before).split('|');
+        o.student = '';
+        o.where = bp[0] + '・' + (bp[1] || '') + '「' + r.field + '」';
+      }
+      return o;
+    });
+    return { list: list, total: rows.length };
+  });
+}
+
+/** 変更の記録を1つ選んで、もとにもどす（そのあとにまた変わっていたら、もどさない）。 */
+function undoHistory(classKey, key, actingAs) {
+  return guard_(function () {
+    var ctx = getContext_(actingAs);
+    var cc = classContext_(ctx, classKey);
+    var k = String(key || '').slice(0, 80);
+    var rows = Store.list(cc.fileId, Store.classSheet('history', cc.classKey));
+    var e = rows.filter(function (r) { return r.key === k; })[0];
+    if (!e) throw appError_('その記録が見つかりませんでした。');
+    if (/^undo:/.test(e.note)) throw appError_('「もとにもどす」をした記録は、もどせません。表から直してください。');
+    if (rows.some(function (r) { return r.note === 'undo:' + k; })) throw appError_('この変更は、もうもどしてあります。');
+    var now = now_();
+    var p = String(e.target).split('|');
+    if (e.kind === 'score') {
+      var t = testsOfClass_(cc.fileId, cc.classKey).filter(function (x) { return x.testId === p[0]; })[0];
+      if (!t) throw appError_('このテストは消されています。先にテストをもどしてください。');
+      if (cc.emails.indexOf(p[1]) === -1) throw appError_('この子は、いまの名簿にいません。');
+      var cur = '';
+      var row = Store.list(cc.fileId, Store.classSheet('scores', cc.classKey), function (r) { return r.key === t.testId + '|' + p[1]; })[0];
+      if (row) { try { var v0 = JSON.parse(row.values); cur = v0[e.field] === undefined || v0[e.field] === null ? '' : String(v0[e.field]); } catch (x) { cur = ''; } }
+      if (cur !== e.after) throw appError_('そのあとに、また変わっています（いまの値: ' + (cur === '' ? '空' : cur) + '）。表から直してください。');
+      Store.upsert(cc.fileId, Store.classSheet('scores', cc.classKey), function (o) { return o.key; },
+        [{ key: t.testId + '|' + p[1], testId: t.testId, studentEmail: p[1] }], function (old, next) {
+          var v = {};
+          if (old) { try { v = JSON.parse(old.values); } catch (x) { v = {}; } }
+          if (e.before === '') delete v[e.field]; else v[e.field] = Number(e.before);
+          return { key: next.key, testId: next.testId, studentEmail: next.studentEmail, values: JSON.stringify(v), updatedAt: now, updatedBy: ctx.me };
+        });
+      logHistory_(cc, [{ kind: 'score', target: e.target, field: e.field, before: e.after, after: e.before, note: 'undo:' + k }], ctx.me, now);
+    } else if (e.kind === 'manual') {
+      if (cc.emails.indexOf(p[0]) === -1) throw appError_('この子は、いまの名簿にいません。');
+      var mkey = [p[0], p[1], p[2], e.field].join('|');
+      var mrow = Store.list(cc.fileId, Store.classSheet('manual', cc.classKey), function (r) { return r.key === mkey; })[0];
+      var mcur = mrow ? mrow.value : '';
+      if (mcur !== e.after) throw appError_('そのあとに、また変わっています（いまの値: ' + (mcur === '' ? '空' : mcur) + '）。表から直してください。');
+      Store.upsert(cc.fileId, Store.classSheet('manual', cc.classKey), function (o) { return o.key; }, [{ key: mkey, studentEmail: p[0], subject: p[1],
+        term: p[2], field: e.field, value: e.before, updatedAt: now, updatedBy: ctx.me }]);
+      logHistory_(cc, [{ kind: 'manual', target: e.target, field: e.field, before: e.after, after: e.before, note: 'undo:' + k }], ctx.me, now);
+    } else if (e.kind === 'test') {
+      var tr = Store.list(cc.fileId, 'trash', function (r) { return r.key === e.target && r.classKey === cc.classKey; })[0];
+      if (!tr) throw appError_('消したテストの控えが見つかりませんでした。');
+      var info = JSON.parse(tr.test), scs = JSON.parse(tr.scores || '{}');
+      var have = testsOfClass_(cc.fileId, cc.classKey);
+      if (have.some(function (x) { return x.testId === info.testId; })) throw appError_('このテストは、もうもどっています。');
+      var sub = cc.subjects.filter(function (x) { return x.name === tr.subject; })[0];
+      if (!sub) throw appError_('この学年の教科ではありません。');
+      var order = have.filter(function (x) { return x.subject === tr.subject && x.term === tr.term; }).reduce(function (m, x) { return Math.max(m, x.order || 0); }, 0) + 1;
+      Store.upsert(cc.fileId, 'tests', function (o) { return o.testId; }, [{ testId: info.testId, classKey: cc.classKey, subject: tr.subject, term: tr.term, order: order,
+        name: info.name, points: JSON.stringify(info.points), updatedAt: now, updatedBy: ctx.me }]);
+      var items = Object.keys(scs).filter(function (em) { return cc.emails.indexOf(em) !== -1; }).map(function (em) {
+        return { key: info.testId + '|' + em, testId: info.testId, studentEmail: em, values: scs[em], updatedAt: now, updatedBy: ctx.me };
+      });
+      if (items.length) Store.upsert(cc.fileId, Store.classSheet('scores', cc.classKey), function (o) { return o.key; }, items);
+      logHistory_(cc, [{ kind: 'test', target: e.target, field: e.field, before: e.before, after: 'もどした', note: 'undo:' + k }], ctx.me, now);
+    } else {
+      throw appError_('この記録は、もどせません。');
+    }
+    return { ok: true };
   });
 }
 
@@ -351,7 +462,7 @@ function saveManual(classKey, changes, actingAs) {
     var cc = classContext_(ctx, classKey);
     var list = validateManualChanges_(changes, cc.emails, cc.subjects, cc.terms);
     var now = now_();
-    var conflicts = [];
+    var conflicts = [], hist = [];
     Store.upsert(cc.fileId, Store.classSheet('manual', cc.classKey), function (o) { return o.key; }, list.map(function (c) {
       return { key: [c.studentEmail, c.subject, c.term, c.field].join('|'), studentEmail: c.studentEmail, subject: c.subject,
         term: c.term, field: c.field, value: c.value, base: c.base, updatedAt: now, updatedBy: ctx.me };
@@ -362,8 +473,10 @@ function saveManual(classKey, changes, actingAs) {
         return old;
       }
       delete next.base;
+      if (cur !== next.value) hist.push({ kind: 'manual', target: [next.studentEmail, next.subject, next.term].join('|'), field: next.field, before: cur, after: next.value });
       return next;
     });
+    logHistory_(cc, hist, ctx.me, now);
     return { savedAt: now, count: list.length - conflicts.length, conflicts: conflictOut_(conflicts, cc) };
   });
 }

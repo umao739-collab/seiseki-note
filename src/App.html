@@ -133,6 +133,57 @@
       document.body.appendChild(veil);
     });
   }
+  /** 変更の記録（だれが・いつ・どのマスを・何から何に）。まちがえた変更は、1つずつ「もとにもどす」。 */
+  function showHistory() {
+    leaveOk().then(function (ok) {
+      if (!ok) return;
+      var cd = S.cd, changed = false;
+      var veil = h('div', { class: 'veil' });
+      var listBox = h('div', { class: 'histlist' }, h('p', { class: 'muted' }, '読んでいます…'));
+      var filter = h('input', { class: 'text', type: 'search', placeholder: '子どもの名前・テストの名前でしぼる', style: { flex: '1', minWidth: '200px' } });
+      function close() { document.body.removeChild(veil); if (changed) reloadClass(); }
+      var box = h('div', { class: 'dialog wide', role: 'dialog', 'aria-modal': 'true' },
+        h('div', { class: 'row', style: { alignItems: 'flex-start' } }, note(46), h('div', { style: { flex: '1' } },
+          h('h3', null, '🕘 変更の記録（' + cd.label + '）'),
+          h('p', { class: 'small', style: { margin: '0 0 8px' } }, '保存した変更が、新しい順に出ます。まちがえた変更は「もとにもどす」で、そのマスだけ前の値にもどせます（ほかのマスは変わりません）。'),
+          h('div', { class: 'row' }, filter))),
+        listBox,
+        h('div', { class: 'row', style: { justifyContent: 'flex-end', marginTop: '12px' } }, h('button', { class: 'btn sora', onclick: close }, 'とじる')));
+      veil.appendChild(box);
+      document.body.appendChild(veil);
+      var all = [];
+      function val(x, kind) { return x === '' || x === null || x === undefined ? '（空）' : x === '/' ? '‐' : (kind === 'score' ? x + '点' : x); }
+      function draw() {
+        clear(listBox);
+        var q = filter.value.trim();
+        var rows = all.filter(function (x) { return !q || (x.student + x.where).indexOf(q) !== -1; });
+        if (!rows.length) { listBox.appendChild(h('p', { class: 'muted' }, all.length ? '合う記録がありません。' : 'まだ記録がありません（この版から、保存するたびに記録されます）。')); return; }
+        listBox.appendChild(h('table', { class: 'form hist' },
+          h('thead', null, h('tr', null, ['いつ', 'だれが', '子ども', 'どこ', '変えた内容', ''].map(function (t) { return h('th', null, t); }))),
+          h('tbody', null, rows.map(function (x) {
+            var what = x.kind === 'test' ? (x.isUndo ? 'テストをもどした' : 'テストを消した') :
+              h('span', null, (x.kind === 'score' ? short(x.field) : (x.field === '評定' ? '評定' : short(x.field))) + '　', h('s', { class: 'muted' }, val(x.before, x.kind)), ' → ', h('b', null, val(x.after, x.kind)));
+            var act;
+            if (x.isUndo) act = h('span', { class: 'muted small' }, '（もとにもどした記録）');
+            else if (x.undone) act = h('span', { class: 'muted small' }, '✓ もどしました');
+            else act = h('button', { class: 'btn plain small', onclick: function (e) {
+              e.target.disabled = true; e.target.textContent = 'もどしています…';
+              call('undoHistory', cd.classKey, x.key).then(function () {
+                changed = true; x.undone = 'いま';
+                toast('もとにもどしました'); load();
+              }).catch(function (err) { e.target.disabled = false; e.target.textContent = x.kind === 'test' ? 'テストをもどす' : 'もとにもどす'; fail(err); });
+            } }, x.kind === 'test' ? 'テストをもどす' : 'もとにもどす');
+            return h('tr', { class: x.isUndo ? 'muted' : '' }, h('td', { class: 'small', style: { whiteSpace: 'nowrap' } }, String(x.at).slice(5, 16)), h('td', { class: 'small' }, x.byName),
+              h('td', null, x.student || '—'), h('td', { class: 'small' }, x.where), h('td', null, what), h('td', null, act));
+          }))));
+      }
+      function load() {
+        call('getHistory', cd.classKey).then(function (r) { all = r.list || []; draw(); }).catch(function (e) { clear(listBox); listBox.appendChild(h('p', { class: 'muted' }, e.message)); });
+      }
+      filter.addEventListener('input', draw);
+      load();
+    });
+  }
   function leaveOk() {
     if (!pendingCount()) return Promise.resolve(true);
     return ask('保存していない入力があります', h('p', null, 'まだ保存していない入力が ' + pendingCount() + 'つ あります。どうしますか？'),
@@ -270,7 +321,9 @@
     var wrap = h('div', null);
     wrap.appendChild(h('div', { class: 'row board-row', style: { margin: '6px 0 6px' } },
       h('button', { class: 'linkbtn', onclick: function () { leaveOk().then(function (ok) { if (ok) { S.view = 'home'; S.cd = null; render(); } }); } }, '← メニューにもどる'),
-      h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, cd.label), h('span', { class: 'muted' }, cd.students.length + '人・' + cd.termSystem)));
+      h('h2', { class: 'title', style: { margin: '0 0 0 8px', fontSize: '26px' } }, cd.label), h('span', { class: 'muted' }, cd.students.length + '人・' + cd.termSystem),
+      h('span', { class: 'spacer' }),
+      h('button', { class: 'linkbtn', title: 'だれが・いつ・どのマスを変えたか。まちがえて消したときは、ここからもどせます', onclick: showHistory }, '🕘 変更の記録')));
     wrap.appendChild(h('nav', { class: 'shelf' }, CLASS_TABS.map(function (t) {
       return h('button', { class: 'tab ' + t[3] + (S.tab === t[0] ? ' on' : ''), onclick: function () {
         if (S.tab === t[0]) return;

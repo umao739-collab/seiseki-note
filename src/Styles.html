@@ -172,6 +172,10 @@
   /* ============ ダイアログ ============ */
   .veil { position: fixed; inset: 0; background: rgba(90, 70, 54, .28); z-index: 40; display: flex; align-items: center; justify-content: center; padding: 16px; }
   .dialog { background: var(--card); border: 2px solid var(--ink); border-radius: var(--wobble); padding: 20px 24px; max-width: 520px; width: 100%; box-shadow: 6px 8px 0 rgba(90, 70, 54, .2); }
+  .dialog.wide { max-width: 980px; max-height: 90vh; display: flex; flex-direction: column; }
+  .histlist { overflow: auto; flex: 1; margin-top: 8px; }
+  table.hist td, table.hist th { padding: 6px 8px; vertical-align: middle; }
+  table.hist tr.muted td { color: var(--ink-soft); }
   .dialog h3 { margin: 0 0 10px; font-size: 20px; }
 
   /* ============ よみこみ中・おしらせ ============ */

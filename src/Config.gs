@@ -13,7 +13,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.15.1';
+var APP_VERSION = '2.16.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -42,9 +42,15 @@ var SCHEMA = {
   /** 評価の基準（クラス×教科×学期）と評定の表（クラス×教科・term は「評定」）。value は JSON。 */
   criteria: ['key', 'classKey', 'subject', 'term', 'value', 'updatedAt', 'updatedBy'],
   /** 消したテストと、その点数の控え（まちがえて消したときに戻せるように残す）。test・scores は JSON。 */
-  trash: ['key', 'classKey', 'subject', 'term', 'test', 'scores', 'deletedAt', 'deletedBy']
+  trash: ['key', 'classKey', 'subject', 'term', 'test', 'scores', 'deletedAt', 'deletedBy'],
+  /**
+   * 変更の記録（クラスごとのシート history_<classKey>）。保存のたびに、どのマスを何から何に変えたかを残す。
+   * kind: score（点数・target=testId|メール・field=観点）／manual（手で入れた値・target=メール|教科|時期・field=観点か評定）／test（消したテスト・target=trash の key）。
+   * note: 'undo:<key>' は、その記録を「もとにもどす」で戻したしるし。
+   */
+  history: ['key', 'kind', 'target', 'field', 'before', 'after', 'at', 'by', 'note']
 };
-var CLASS_SHEETS = { scores: 'scores_', manual: 'manual_' };
+var CLASS_SHEETS = { scores: 'scores_', manual: 'manual_', history: 'history_' };
 
 /** 学期の名前。 */
 var TERM_LABELS = { '3学期制': ['1学期', '2学期', '3学期'], '2学期制': ['前期', '後期'] };
@@ -120,7 +126,7 @@ function defaultSubjectsForGrade_(grade) {
  * 末尾 `_` の無い関数はこの一覧だけ（google.script.run から呼べる）。
  * tools/run-local-tests.js がグローバル関数の一覧と照らし合わせる。
  */
-var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'getPeers', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
+var PUBLIC_FUNCTIONS = ['bootstrap', 'getClassData', 'getPeers', 'getHistory', 'undoHistory', 'saveTests', 'copyTestsToClasses', 'saveScores', 'saveManual',
   'saveCriteria', 'saveHyoteiRule', 'copyCriteriaToClasses', 'previewSmileImport', 'importSmile',
   'getSchoolSetup', 'saveAssignments', 'importRoster', 'getAdminView', 'registerSchool', 'updateSchool'];
 var ADMIN_FUNCTIONS = ['setup', 'startFiscalYear', 'closeFiscalYear'];

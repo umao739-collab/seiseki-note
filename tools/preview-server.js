@@ -29,7 +29,7 @@
     'demo.admin@example.com': { role: 'admin', name: 'アプリ管理者' }
   };
   var gradeSubjects = { 3: defaultSubjectsForGrade_(3) };
-  var tests = [], scores = {}, manual = {};
+  var tests = [], scores = {}, manual = {}, hist = [], trashBox = {};
   function addTests(ck, subject, term, defs) {
     defs.forEach(function (d, i) { tests.push({ testId: Utilities.getUuid(), classKey: ck, subject: subject, term: term, order: i + 1, name: d[0], points: d[1] }); });
   }
@@ -124,6 +124,41 @@
         sameGrade: a.classes.filter(function (k) { return k !== c && gradeOf_(k) === gradeOf_(c); }).map(function (k) { return { classKey: k, label: classLabel_(k) }; }),
         canEditSubjects: a.isSetup };
     },
+    getHistory: function (ck, actingAs) {
+      var a = actor(actingAs); var c = cls(a, ck);
+      var names = {}; classes[c].forEach(function (x) { names[x.email] = x.number + '番 ' + x.name; });
+      var tmap = {}; testsOf(c).forEach(function (t) { tmap[t.testId] = t; });
+      var undone = {}; hist.forEach(function (h) { if (h.undoOf) undone[h.undoOf] = h.at; });
+      return { list: hist.filter(function (h) { return h.classKey === c; }).slice().reverse().map(function (h) {
+        var t = tmap[h.testId];
+        return { key: h.key, kind: h.kind, field: h.field, before: h.before, after: h.after, at: h.at, byName: h.by, undone: undone[h.key] || '', isUndo: !!h.undoOf,
+          student: h.kind === 'test' ? '' : names[h.email], where: h.kind === 'score' ? (t ? t.subject + '・' + t.term + '「' + t.name + '」' : '（消したテスト）') : h.kind === 'manual' ? h.subject + '・' + h.term : h.subject + '・' + h.term + '「' + h.field + '」' };
+      }) };
+    },
+    undoHistory: function (ck, key, actingAs) {
+      var a = actor(actingAs); var c = cls(a, ck);
+      var e = hist.filter(function (h) { return h.key === key; })[0];
+      if (!e) err('その記録が見つかりませんでした。');
+      if (hist.some(function (h) { return h.undoOf === key; })) err('この変更は、もうもどしてあります。');
+      if (e.kind === 'score') {
+        var row = ((scores[e.testId] = scores[e.testId] || {})[e.email] = (scores[e.testId] || {})[e.email] || {});
+        var cur = row[e.field] === undefined ? '' : String(row[e.field]);
+        if (cur !== e.after) err('そのあとに、また変わっています（いまの値: ' + (cur || '空') + '）。表から直してください。');
+        if (e.before === '') delete row[e.field]; else row[e.field] = Number(e.before);
+        hist.push({ key: Utilities.getUuid(), classKey: c, kind: 'score', testId: e.testId, email: e.email, field: e.field, before: e.after, after: e.before, at: '2026-11-17 13:00', by: a.name, undoOf: key });
+      } else if (e.kind === 'manual') {
+        var k = [e.email, e.subject, e.term, e.field].join('|');
+        if ((manual[k] || '') !== e.after) err('そのあとに、また変わっています。表から直してください。');
+        manual[k] = e.before;
+        hist.push({ key: Utilities.getUuid(), classKey: c, kind: 'manual', email: e.email, subject: e.subject, term: e.term, field: e.field, before: e.after, after: e.before, at: '2026-11-17 13:00', by: a.name, undoOf: key });
+      } else {
+        var tb = trashBox[e.target];
+        if (tests.some(function (t) { return t.testId === tb.test.testId; })) err('このテストは、もうもどっています。');
+        tests.push(tb.test); scores[tb.test.testId] = tb.scores;
+        hist.push({ key: Utilities.getUuid(), classKey: c, kind: 'test', target: e.target, field: e.field, subject: e.subject, term: e.term, at: '2026-11-17 13:00', by: a.name, undoOf: key });
+      }
+      return { ok: true };
+    },
     getPeers: function (ck, actingAs) { var a = actor(actingAs); return peersOf(cls(a, ck)); },
     saveCriteria: function (ck, subject, term, value, actingAs) {
       var a = actor(actingAs); var c = cls(a, ck);
@@ -160,7 +195,13 @@
       var before = tests.filter(function (t) { return t.classKey === c && t.subject === subject && t.term === term; });
       v.forEach(function (t) { if (!t.testId) t.testId = Utilities.getUuid(); });
       var keep = v.map(function (t) { return t.testId; });
-      before.forEach(function (t) { if (keep.indexOf(t.testId) === -1) delete scores[t.testId]; });
+      before.forEach(function (t) {
+        if (keep.indexOf(t.testId) !== -1) return;
+        var tk = t.testId + '|x' + hist.length;
+        trashBox[tk] = { test: JSON.parse(JSON.stringify(t)), scores: JSON.parse(JSON.stringify(scores[t.testId] || {})) };
+        hist.push({ key: Utilities.getUuid(), classKey: c, kind: 'test', target: tk, field: t.name, subject: subject, term: term, at: '2026-11-17 12:' + (10 + hist.length % 50), by: a.name });
+        delete scores[t.testId];
+      });
       tests = tests.filter(function (t) { return !(t.classKey === c && t.subject === subject && t.term === term); })
         .concat(v.map(function (t) { return { testId: t.testId, classKey: c, subject: subject, term: term, order: t.order, name: t.name, points: t.points }; }));
       return { tests: testsOf(c) };
@@ -190,6 +231,7 @@
         var row = sc[x.studentEmail] = sc[x.studentEmail] || {};
         var cur = row[x.kanten] === undefined ? '' : String(row[x.kanten]);
         if (x.base !== undefined && cur !== x.base && cur !== String(x.value)) { conflicts.push({ testId: x.testId, studentEmail: x.studentEmail, kanten: x.kanten, value: row[x.kanten] === undefined ? '' : row[x.kanten], byName: 'デモ 学年の先生' }); return; }
+        if (cur !== String(x.value)) hist.push({ key: Utilities.getUuid(), classKey: c, kind: 'score', testId: x.testId, email: x.studentEmail, field: x.kanten, before: cur, after: String(x.value), at: '2026-11-17 10:' + (10 + hist.length % 50), by: a.name });
         if (x.value === '') delete row[x.kanten]; else row[x.kanten] = x.value;
       });
       return { savedAt: '2026-11-15 10:00:00', count: changes.length - conflicts.length, conflicts: conflicts };
@@ -200,6 +242,7 @@
       validateManualChanges_(changes, emails(c), gradeSubjects[gradeOf_(c)], terms).forEach(function (x) {
         var k = [x.studentEmail, x.subject, x.term, x.field].join('|'), cur = manual[k] || '';
         if (x.base !== undefined && cur !== x.base && cur !== x.value) { conflicts.push({ studentEmail: x.studentEmail, subject: x.subject, term: x.term, field: x.field, value: cur, byName: 'デモ 学年の先生' }); return; }
+        if (cur !== x.value) hist.push({ key: Utilities.getUuid(), classKey: c, kind: 'manual', email: x.studentEmail, subject: x.subject, term: x.term, field: x.field, before: cur, after: x.value, at: '2026-11-17 11:' + (10 + hist.length % 50), by: a.name });
         manual[k] = x.value;
       });
       return { savedAt: '2026-11-15 10:00:00', count: changes.length - conflicts.length, conflicts: conflicts };
