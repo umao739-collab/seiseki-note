@@ -283,7 +283,8 @@
   .pill.on { background: var(--board); border-color: var(--board); color: var(--chalk); }
 
   /* 本だな → 黒板にはったクラスのカード */
-  .book { border: none; border-radius: 3px; box-shadow: var(--shadow); transform: rotate(-1.2deg); }
+  .book { border: none; border-radius: 3px; box-shadow: var(--shadow); transform: rotate(-1.2deg); overflow: visible; }
+  .books { padding-top: 12px; }
   .book:nth-child(2n) { transform: rotate(1deg); }
   .book:before { left: 50%; top: -8px; bottom: auto; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; border: none; background: #E2574C; box-shadow: inset -3px -3px 0 rgba(0,0,0,.2); }
   .book .bl { font-family: 'Yomogi', sans-serif; font-size: 32px; }
