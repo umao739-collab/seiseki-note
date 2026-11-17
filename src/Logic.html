@@ -32,6 +32,9 @@
 
   function r1(x) { return Math.round(x * 10) / 10; }
   function rate(sum, max) { return max > 0 ? r1(sum / max * 100) : null; }
+  /** 到達率（%）の平均。テストが無ければ null。 */
+  function meanRate(list) { return list.length ? r1(list.reduce(function (a, b) { return a + b; }, 0) / list.length) : null; }
+  SL.meanRate = meanRate;
   function abcOf(rt, a, b) {
     if (rt === null || rt === undefined) return '';
     return rt >= a ? 'A' : rt >= b ? 'B' : 'C';
@@ -173,27 +176,37 @@
    */
   SL.termEval = function (cd, sub, sk, term) {
     var tests = testsOf(cd, sub.name, term);
+    // 到達率は「テストごとの到達率の平均」（満点が 50 点でも 100 点でも、どのテストも同じ重さ）。
+    // 1つのテストの中では、まとめ先の観点（漢字・言葉 → 知識・技能）の点を合わせてから到達率を出す。
     var acc = {};
-    sub.kanten.forEach(function (k) { acc[k.label] = { sum: 0, max: 0 }; });
-    var allSum = 0, allMax = 0;
+    sub.kanten.forEach(function (k) { acc[k.label] = { sum: 0, max: 0, rates: [] }; });
+    var allRates = [];
     tests.forEach(function (t) {
       var row = (cd.scores[t.testId] || {})[sk] || {};
+      var one = {}, allS = 0, allM = 0;
       Object.keys(t.points).forEach(function (label) {
         var v = row[label];
         if (v === null || v === undefined || v === '') return;
         var k = kantenOf(sub, label);
         if (!k) return;
-        var target = k.into ? k.into : label;
-        if (!acc[target]) acc[target] = { sum: 0, max: 0 };
-        acc[target].sum += v; acc[target].max += t.points[label];
-        if (k.into) { acc[label].sum += v; acc[label].max += t.points[label]; }
-        allSum += v; allMax += t.points[label];
+        var targets = k.into ? [k.into, label] : [label];
+        targets.forEach(function (tg) {
+          var o = one[tg] = one[tg] || { sum: 0, max: 0 };
+          o.sum += v; o.max += t.points[label];
+        });
+        allS += v; allM += t.points[label];
       });
+      Object.keys(one).forEach(function (tg) {
+        var a = acc[tg] = acc[tg] || { sum: 0, max: 0, rates: [] };
+        a.sum += one[tg].sum; a.max += one[tg].max;
+        if (one[tg].max > 0) a.rates.push(one[tg].sum / one[tg].max * 100);
+      });
+      if (allM > 0) allRates.push(allS / allM * 100);
     });
     var crit = SL.criteriaFor(cd, sub, term);
     var out = evalKanten(sub).map(function (k) {
-      var a = acc[k.label] || { sum: 0, max: 0 };
-      var rt = k.test ? rate(a.sum, a.max) : null;
+      var a = acc[k.label] || { sum: 0, max: 0, rates: [] };
+      var rt = k.test ? meanRate(a.rates) : null;
       var th = crit.kanten[k.label] || { a: k.a, b: k.b };
       var auto = k.test ? abcOf(rt, th.a, th.b) : '';
       var manual = manualOf(cd, sk, sub.name, term, k.label);
@@ -201,7 +214,7 @@
     });
     var hy = hyoteiOf(cd, sub, out.map(function (x) { return x.final; }));
     var hManual = manualOf(cd, sk, sub.name, term, '評定');
-    return { kanten: out, hyotei: { auto: hy, manual: hManual, final: hManual || hy }, total: { rate: rate(allSum, allMax) } };
+    return { kanten: out, hyotei: { auto: hy, manual: hManual, final: hManual || hy }, total: { rate: meanRate(allRates) } };
   };
 
   /** 観点の A/B/C の組み合わせを評定の表に当てる（3・2・1）。1つでも空・評価不能があれば ''。 */
@@ -357,7 +370,7 @@
       var cnt = { A: 0, B: 0, C: 0 };
       t.rows.forEach(function (row, i) {
         if (!row) return;
-        var sum = 0, max = 0, any = false;
+        var sum = 0, max = 0, any = false, one = {};
         Object.keys(t.points).forEach(function (l) {
           var v = row[l];
           if (v === null || v === undefined || v === '') return;
@@ -365,16 +378,18 @@
           var k = sub.kanten.filter(function (x) { return x.label === l; })[0];
           if (!k) return;
           var target = k.into || l;
-          var a = acc[i][target] = acc[i][target] || { sum: 0, max: 0 };
-          a.sum += v; a.max += t.points[l];
+          var o = one[target] = one[target] || { sum: 0, max: 0 };
+          o.sum += v; o.max += t.points[l];
         });
+        // 学期の到達率と同じく、テストごとの到達率を平均する
+        Object.keys(one).forEach(function (tg) { if (one[tg].max) (acc[i][tg] = acc[i][tg] || []).push(one[tg].sum / one[tg].max * 100); });
         if (any) cnt[abcOf(rate(sum, max), crit.unit.a, crit.unit.b)]++;
       });
       out.tests[t.name] = cnt;
     });
     Object.keys(crit.kanten).forEach(function (l) {
       var cnt = { A: 0, B: 0, C: 0 };
-      acc.forEach(function (a) { if (a[l] && a[l].max) cnt[abcOf(rate(a[l].sum, a[l].max), crit.kanten[l].a, crit.kanten[l].b)]++; });
+      acc.forEach(function (a) { if (a[l] && a[l].length) cnt[abcOf(meanRate(a[l]), crit.kanten[l].a, crit.kanten[l].b)]++; });
       out.kanten[l] = cnt;
     });
     return out;
@@ -399,18 +414,18 @@
 
   /** 教科×時期の学級の到達率（観点ごと・教科全体）。 */
   function classRates(cd, sub, term) {
-    var k = {}, all = { sum: 0, max: 0 };
+    // 学級平均は、一人ひとりの到達率の平均
+    var k = {}, all = [];
     cd.students.forEach(function (st) {
       var te = SL.termEval(cd, sub, st.key, term);
       te.kanten.forEach(function (x) {
-        if (!x.test) return;
-        var a = k[x.label] = k[x.label] || { sum: 0, max: 0 };
-        a.sum += x.sum; a.max += x.max;
+        if (!x.test || x.rate === null) return;
+        (k[x.label] = k[x.label] || []).push(x.rate);
       });
-      SL.testsOf(cd, sub.name, term).forEach(function (t) { var r = SL.testResult(cd, sub, t, st.key); if (r) { all.sum += r.sum; all.max += r.max; } });
+      if (te.total.rate !== null) all.push(te.total.rate);
     });
-    var out = { kanten: {}, all: rate(all.sum, all.max) };
-    Object.keys(k).forEach(function (l) { out.kanten[l] = rate(k[l].sum, k[l].max); });
+    var out = { kanten: {}, all: meanRate(all) };
+    Object.keys(k).forEach(function (l) { out.kanten[l] = meanRate(k[l]); });
     return out;
   }
 
@@ -434,7 +449,7 @@
     });
     if (!max) return null;
     return {
-      name: sub.name, rate: rate(sum, max), classRate: cr.all,
+      name: sub.name, rate: te.total.rate, classRate: cr.all,
       kanten: te.kanten.filter(function (x) { return x.test; }).map(function (x) {
         var f = ev.kanten.filter(function (y) { return y.label === x.label; })[0];
         return { label: x.label, rate: x.rate, classRate: cr.kanten[x.label] === undefined ? null : cr.kanten[x.label], max: x.max, eval: f ? f.final : '' };

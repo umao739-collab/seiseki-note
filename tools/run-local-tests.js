@@ -423,5 +423,25 @@ run('K02 ようすはテストの結果がある教科だけ', () => {
 
 });
 
+run('L14 学期の到達率は、テストごとの到達率の平均（満点がちがっても同じ重さ）', () => {
+  const kat = JSON.parse(JSON.stringify(ctx.defaultSubjectsForGrade_(6).filter((x) => x.name === '家庭')[0]));
+  const cd = cdOf();
+  cd.subjects = [kat];
+  cd.criteria = { '家庭|1学期': { kanten: { '知識・技能': { a: 95, b: 60 }, '思考・判断・表現': { a: 96, b: 60 } } } };
+  cd.tests = [
+    { testId: 'k1', subject: '家庭', term: '1学期', order: 1, name: 'クッキング', points: { '知識・技能': 100, '思考・判断・表現': 50 } },
+    { testId: 'k2', subject: '家庭', term: '1学期', order: 2, name: 'クリーン作戦', points: { '知識・技能': 50, '思考・判断・表現': 50 } },
+    { testId: 'k3', subject: '家庭', term: '1学期', order: 3, name: '衣服の手入れ', points: { '知識・技能': 50, '思考・判断・表現': 50 } }
+  ];
+  cd.scores = { k1: { a: { '知識・技能': 85, '思考・判断・表現': 50 } }, k2: { a: { '知識・技能': 50, '思考・判断・表現': 50 } }, k3: { a: { '知識・技能': 50, '思考・判断・表現': 50 } } };
+  const te = SL.termEval(cd, kat, 'a', '1学期');
+  const know = te.kanten.filter((x) => x.label === '知識・技能')[0];
+  eq(know.rate, 95, '(85 + 100 + 100) ÷ 3');
+  eq(know.auto, 'A');
+  // 点数がない子は、評価なし（C にしない）
+  const none = SL.termEval(cd, kat, 'b', '1学期').kanten.filter((x) => x.label === '知識・技能')[0];
+  eq(none.auto, '');
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);
