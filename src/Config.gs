@@ -13,7 +13,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.12.0';
+var APP_VERSION = '2.13.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -54,7 +54,7 @@ var YEAR_TERM = '1年間';
 /** criteria シートで、評定の表の行に使う term。 */
 var HYOTEI_RULE_TERM = '評定';
 
-var MAX_LEN = { testName: 40, shoken: 800, subject: 20, kanten: 30, schoolName: 60 };
+var MAX_LEN = { testName: 40, shoken: 2000, subject: 20, kanten: 30, schoolName: 60 };
 var MAX_TESTS_PER_TERM = 40;
 var MAX_POINT = 1000;
 var MAX_CHANGES = 5000;

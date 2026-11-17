@@ -403,5 +403,37 @@ run('G03 GG の学年ごとの教科の並び（1〜6年の GG の見出しと�
   });
 });
 
+run('K01 教科ごとの所見: 型の分け方（基準は学期の評価の基準 80/60）と観点の書き方', () => {
+  const rika = JSON.parse(JSON.stringify(g3.filter((s) => s.name === '理科')[0]));
+  const mk = (rows) => {
+    const cd = cdOf();
+    cd.subjects = [rika];
+    cd.tests = [
+      { testId: 'r1', subject: '理科', term: '1学期', order: 1, name: '台風と気象情報', points: { '知識・技能': 50, '思考・判断・表現': 50 } },
+      { testId: 'r2', subject: '理科', term: '1学期', order: 2, name: '植物の発芽', points: { '知識・技能': 50, '思考・判断・表現': 50 } }
+    ];
+    cd.scores = { r1: { a: rows[0], b: { '知識・技能': 35, '思考・判断・表現': 35 } }, r2: { a: rows[1], b: { '知識・技能': 35, '思考・判断・表現': 35 } } };
+    return SL.subjectShoken(cd, rika, 'a', '1学期', { length: 'normal' });
+  };
+  const allA = mk([{ '知識・技能': 50, '思考・判断・表現': 48 }, { '知識・技能': 46, '思考・判断・表現': 45 }]);
+  eq(allA.type, 'allA'); ok(/知識・技能と思考・判断・表現/.test(allA.text), allA.text);
+  const split = mk([{ '知識・技能': 48, '思考・判断・表現': 10 }, { '知識・技能': 45, '思考・判断・表現': 20 }]);
+  eq(split.type, 'split'); ok(/「台風と気象情報」/.test(split.text) && /知識・技能の問題はよくでき/.test(split.text) && /思考・判断・表現の問題/.test(split.text), split.text);
+  const allC = mk([{ '知識・技能': 25, '思考・判断・表現': 5 }, { '知識・技能': 10, '思考・判断・表現': 0 }]);
+  eq(allC.type, 'allC'); ok(!/できていない/.test(allC.text), allC.text);
+  const mixed = mk([{ '知識・技能': 48, '思考・判断・表現': 40 }, { '知識・技能': 25, '思考・判断・表現': 40 }]);
+  eq(mixed.type, 'mixed'); ok(/つまずき|十分に力を発揮できません/.test(mixed.text), mixed.text);
+  const none = (() => { const cd = cdOf(); cd.subjects = [rika]; cd.tests = [{ testId: 'r1', subject: '理科', term: '1学期', order: 1, name: 'x', points: { '知識・技能': 50 } }]; cd.scores = {}; return SL.subjectShoken(cd, rika, 'a', '1学期'); })();
+  eq(none.type, 'none');
+  const short = mk([{ '知識・技能': 48, '思考・判断・表現': 10 }, { '知識・技能': 45, '思考・判断・表現': 20 }]);
+  ok(!/\d+%|\d+点/.test(split.text + allA.text + allC.text + mixed.text), '点数や%が入っている');
+});
+run('K02 教科ごとの所見をまとめた文と、テストのない教科は出さない', () => {
+  const cd = cdOf();
+  const list = SL.shokenBySubject(cd, 'a', '1学期', { length: 'short' });
+  eq(list.map((x) => x.subject), ['国語']);
+  ok(/^【国語】/.test(SL.shokenText(list)));
+});
+
 console.log('\n' + (fail ? '✖ ' : '✔ ') + pass + ' 件 OK / ' + fail + ' 件 NG\n');
 process.exit(fail ? 1 : 0);

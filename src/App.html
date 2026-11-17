@@ -1029,7 +1029,7 @@
   }
   function makeDraft(sk) {
     var k = sk + '|' + S.term;
-    return SL.shoken(SL.profile(S.cd, sk, S.term), { seed: K.seeds[k] || 0, length: K.length, includeChallenge: true });
+    return SL.shokenText(SL.shokenBySubject(S.cd, sk, S.term, { seed: K.seeds[k] || 0, length: K.length }));
   }
   function viewKohyo() {
     var cd = S.cd;
@@ -1069,11 +1069,20 @@
       h('button', { class: 'btn', onclick: function () { printSheets(cd.students); } }, '🖨 全員を印刷'));
 
     // 所見の下書き
-    var target = SL.SHOKEN_TARGET[K.length];
     var counter = h('span', { class: 'muted small' });
-    var ta = h('textarea', { class: 'text kta', 'aria-label': '所見', maxlength: 800, placeholder: '「✨ 下書きをつくる」をおすと、成績から見た所見の下書きが入ります。そのまま直せます。' });
+    var ta = h('textarea', { class: 'text kta', 'aria-label': '所見', maxlength: 2000, placeholder: '「✨ 下書きをつくる」をおすと、テストをした教科ごとに、観点に沿った所見の下書きが入ります（【国語】… の行ごと）。そのまま直せます。' });
     ta.value = shokenOf(st.key, S.term);
-    function upd() { counter.textContent = ta.value.length + '字 ／ 目安 ' + target + '字'; }
+    var perSubject = h('div', { class: 'subjcopy' });
+    function upd() {
+      counter.textContent = ta.value.length + '字';
+      // 【教科】ではじまる行ごとに、コピーのボタンを出す（GG や通知表に教科ごとに貼れるように）
+      clear(perSubject);
+      ta.value.split('\n').forEach(function (line) {
+        var m = /^【([^】]+)】(.*)$/.exec(line);
+        if (!m || !m[2].trim()) return;
+        perSubject.appendChild(h('button', { class: 'btn plain small', title: m[2], onclick: function () { copyText(m[2].trim(), m[1] + 'の所見をコピーしました'); } }, '📋 ' + m[1]));
+      });
+    }
     ta.addEventListener('input', function () { K.drafts[key] = ta.value; upd(); });
     upd();
     function setDraft(t) { K.drafts[key] = t; render(); }
@@ -1094,12 +1103,13 @@
         h('button', { class: 'btn', onclick: function () { setDraft(makeDraft(st.key)); } }, '✨ 下書きをつくる'),
         h('button', { class: 'btn plain', onclick: function () { K.seeds[key] = (K.seeds[key] || 0) + 1; setDraft(makeDraft(st.key)); } }, '🔁 別の言い方')),
       ta,
+      h('div', { class: 'row small', style: { marginTop: '6px', gap: '6px' } }, h('span', { class: 'muted' }, '教科ごとにコピー：'), perSubject),
       h('div', { class: 'row', style: { marginTop: '6px' } }, counter, h('span', { class: 'spacer' }), sv ? h('span', { class: 'muted small' }, '💾 ' + sv.at + ' に保存') : null),
       h('div', { class: 'row', style: { marginTop: '10px' } },
         h('button', { class: 'btn wakaba', onclick: function () { saveItems([{ studentEmail: st.key, term: S.term, text: ta.value }], st.name + 'さんの所見を保存しました'); } }, '💾 保存する'),
         h('button', { class: 'btn plain', onclick: function () { copyText(ta.value, 'コピーしました'); } }, '📋 コピー'),
         h('button', { class: 'btn plain', onclick: function () { copyText(SL.aiPrompt(p, { length: K.length, grade: cd.grade + '年' }), 'AIに頼む文をコピーしました（名前・点数は入っていません）'); } }, '🤖 AIに頼む文をコピー')),
-      h('p', { class: 'muted small', style: { marginBottom: 0 } }, '※ 下書きはテストの結果だけをもとにしています。授業中の様子など、先生にしかわからないことを書き足してください。'),
+      h('p', { class: 'muted small', style: { marginBottom: 0 } }, '※ 下書きはテストの結果だけをもとにしています。よくできた・課題の線は、学期の成績の「評価の基準」と同じです。授業中の様子など、先生にしかわからないことを書き足してください。'),
       h('div', { class: 'row', style: { marginTop: '10px', paddingTop: '10px', borderTop: '2px dashed var(--line)' } },
         h('span', { class: 'muted small' }, h('span', { class: 'dot saved', style: { display: 'inline-block', marginRight: '4px' } }), '保存ずみ　', h('span', { class: 'dot draft', style: { display: 'inline-block', margin: '0 4px 0 6px' } }), '保存していない下書き'),
         h('span', { class: 'spacer' }),
