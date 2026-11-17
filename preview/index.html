@@ -426,7 +426,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.15.0';
+var APP_VERSION = '2.15.1';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -3220,7 +3220,12 @@ function validateHyoteiRule_(rule, subjectConf) {
       h('button', { class: 'btn', onclick: function () { printSheets(cd.students); } }, '🖨 全員を印刷'));
 
     return h('div', null, bar, h('div', { class: 'ksplit' }, roster, h('div', null, tools, kohyoSheet(p),
-      h('p', { class: 'muted small' }, '※「成績から見たようす」は、テストの結果がある教科だけを、学期の成績の「評価の基準」で書いています。'))));
+      h('div', { class: 'muted small', style: { marginTop: '8px', lineHeight: '1.8' } },
+        h('div', null, '※「成績から見たようす」は、テストの結果がある教科だけを、学期の成績の「評価の基準」で書いています。'),
+        h('div', null, '※ 長さのちがい　',
+          h('b', null, '短め'), '：いちばん大事な1文だけ　／　',
+          h('b', null, 'ふつう'), '：ほかによくできた単元やつまずいた単元など、ようすをもう1文　／　',
+          h('b', null, '長め'), '：さらに、前の学期からののび（のびた教科があるときだけ）')))));
   }
 
   // ================= 学校の設定（設定担当） =================
