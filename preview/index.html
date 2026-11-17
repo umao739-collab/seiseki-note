@@ -426,7 +426,7 @@
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.14.0';
+var APP_VERSION = '2.15.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 
@@ -1712,35 +1712,17 @@ function validateHyoteiRule_(rule, subjectConf) {
     ],
     allCTry: [
       '{subj}では、まだ身についていないところがありますが、「{unit}」の{k}の問題は、ほかの問題よりも答えられていました。',
-      '{subj}では、学習したことを確かめていく段階ですが、「{unit}」の{k}の問題には、ほかの問題よりも答えられていました。'
+      '{subj}では、まだ答えられていない問題が多くありますが、「{unit}」の{k}の問題には、ほかの問題よりも答えられていました。'
     ],
     allCLow: [
-      '{subj}では、学習したことがまだ十分に身についていないところがあります。「{unit}」の{k}から、一つずつ確かめていきます。',
-      '{subj}では、学習したことを確かめていく段階です。「{unit}」の{k}から、一つずつていねいに確かめていきます。'
+      '{subj}では、学習したことがまだ十分に身についていないところがあります。その中でも、「{unit}」の{k}の問題は、ほかの問題よりも答えられていました。',
+      '{subj}では、まだ答えられていない問題が多くあります。その中で、「{unit}」の{k}の問題は、ほかの問題よりも答えられていました。'
     ],
     steady: [
       '{subj}では、{ks}ともにおおむね身についています。特に「{unit}」の{k}の問題がよくできていました。',
       '{subj}の学習は、{ks}ともにおおむね身についています。「{unit}」では、{k}の問題で力を発揮しました。'
-    ],
-    next: [
-      '今後は、学んだことを使って自分の考えを説明したり、発展的な問題に挑戦したりできるよう励ましていきます。',
-      'これからは、身につけた力を生かして、さらに深く考える学習にも挑戦できるよう励ましていきます。'
-    ],
-    steadyNext: [
-      '一つ一つの学習を確かめながら、自信をもって取り組めるよう励ましていきます。',
-      'これからも、学んだことを確かめながら、着実に力を伸ばしていけるよう支えていきます。'
-    ],
-    know: [
-      '基本的な用語や手順をくり返し確かめながら、確実に身につけていけるよう支援していきます。',
-      '大切な言葉や手順を一つずつ確かめ、くり返し練習していけるよう支援していきます。'
-    ],
-    think: [
-      '考えたことを言葉や図に表して説明する場面を大切にし、考える力を伸ばしていけるよう支援していきます。',
-      '問題文を読み取り、自分の考えを書き表す練習を重ねていけるよう支援していきます。'
     ]
   };
-  /** 課題の観点に合わせた手立ての文。 */
-  function tedate(type, seed) { return pick(type === 'think' ? TS.think : TS.know, seed, 7); }
   var SUBJ_TARGET = { short: 1, normal: 2, long: 3 };
 
   /**
@@ -1768,14 +1750,19 @@ function validateHyoteiRule_(rule, subjectConf) {
       var top = pickCell(cells, function (c) { return c.rate + c.diff; });
       parts.push(fill(pick(TS.allA, seed, 0), { subj: subj, ks: ks, unit: top.unit, k: kName(top.label),
         top: top.diff >= 8 ? '学級の中でも高い力を発揮しました' : top.rate >= 98 ? 'ほとんどまちがえずに答えられていました' : 'とてもよく答えられていました' }));
-      parts.push(pick(TS.next, seed, 1));
+      var top2 = cells.filter(function (c) { return c.label !== top.label && c.level === 'A'; });
+      if (top2.length) {
+        var other = top2.filter(function (c) { return c.unit !== top.unit; });
+        var t2 = pickCell(other.length ? other : top2, function (c) { return c.rate + c.diff; });
+        parts.push((t2.unit === top.unit ? '同じ単元の' : '「' + t2.unit + '」の') + kName(t2.label) + 'の問題も、よくできていました。');
+      }
     } else if (labels.length && levels.every(function (v) { return v === 'C'; })) {
       type = 'allC';
       var good = pickCell(cells, function (c) { return c.rate - c.b; });
       var bad = pickCell(cells.filter(function (c) { return c.label !== good.label; }).concat([]), function (c) { return -(c.rate - c.b); }) || good;
       var tpl = good.level !== 'C' ? TS.allCBest : good.rate >= 30 ? TS.allCTry : TS.allCLow;
       parts.push(fill(pick(tpl, seed, 0), { subj: subj, unit: good.unit, k: kName(good.label) }));
-      parts.push((tpl === TS.allCLow ? '' : kName(bad.label) + 'については、') + tedate(bad.type, seed));
+      if (bad !== good || tpl !== TS.allCLow) parts.push(kName(bad.label) + 'の問題は、まだ答えられていないところが多くあります。');
     } else if (hi.length && lo.length) {
       type = 'split';
       var khi = hi[0], klo = lo[0];
@@ -1790,7 +1777,13 @@ function validateHyoteiRule_(rule, subjectConf) {
       });
       var unit = best ? best.unit : pickCell(cells.filter(function (c) { return c.label === khi; }), function (c) { return c.rate; }).unit;
       parts.push(fill(pick(TS.split, seed, 0), { subj: subj, unit: unit, khi: kName(khi), klo: kName(klo), phhi: phraseOf(subj, khi), phlo: phraseOf(subj, klo) }));
-      parts.push(tedate(kantenType(klo), seed));
+      var also = 0;
+      cells.forEach(function (c) {
+        if (c.label !== khi || c.unit === unit) return;
+        var o = cells.filter(function (x) { return x.label === klo && x.unit === c.unit && x.term === c.term; })[0];
+        if (o && c.rate - o.rate >= 15) also++;
+      });
+      if (also) parts.push('ほかの単元でも、' + kName(khi) + 'の問題にくらべて、' + kName(klo) + 'の問題で答えにくい様子が見られました。');
     } else {
       var strong = cells.filter(function (c) { return c.level === 'A'; });
       var weak = cells.filter(function (c) { return c.level === 'C'; });
@@ -1800,13 +1793,14 @@ function validateHyoteiRule_(rule, subjectConf) {
         var w1 = weak.length ? pickCell(weak, function (c) { return -(c.rate - c.b) - c.diff; }) : null;
         if (s1) parts.push(fill(pick(s1.diff >= 10 ? TS.strongHigh : TS.strong, seed, 0), { subj: subj, unit: s1.unit, k: kName(s1.label), ph: phraseOf(subj, s1.label) }));
         if (w1) {
-          parts.push(fill(pick(s1 ? TS.weakAfter : TS.weakOnly, seed, 2), { subj: subj, unit: w1.unit, k: kName(w1.label) }) + tedate(w1.type, seed));
-        } else parts.push(pick(TS.steadyNext, seed, 3));
+          parts.push(fill(pick(s1 ? TS.weakAfter : TS.weakOnly, seed, 2), { subj: subj, unit: w1.unit, k: kName(w1.label) }));
+        } else parts.push('ほかの単元も、おおむね身についています。');
       } else {
         type = 'steady';
         var b1 = pickCell(cells, function (c) { return c.rate - c.a + c.diff; });
         parts.push(fill(pick(TS.steady, seed, 0), { subj: subj, ks: ks || kName(b1.label), unit: b1.unit, k: kName(b1.label) }));
-        parts.push(pick(TS.steadyNext, seed, 3));
+        var low = cells.filter(function (c) { return c !== b1 && c.diff <= -10; });
+        if (low.length) { var l1 = pickCell(low, function (c) { return -c.diff; }); parts.push('「' + l1.unit + '」の' + kName(l1.label) + 'の問題は、ほかの単元にくらべて少し答えにくかったようです。'); }
       }
     }
     // 長めのときは、学期をまたいだのびも書く
