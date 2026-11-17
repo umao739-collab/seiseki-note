@@ -50,7 +50,8 @@
   // ---------- 文房具の絵（すべてオリジナル）：ノート・えんぴつ・三角定規 ----------
   /** えんぴつ（色・角度）。 */
   function pencil(w, c, rot) {
-    return s('svg', { width: w, height: Math.round(w * 0.4), viewBox: '0 0 110 44', 'aria-hidden': 'true' },
+    // ななめにしても先やけしゴムが切れないよう、まわりに余白をとった描く範囲にする
+    return s('svg', { width: w, height: Math.round(w * 64 / 124), viewBox: '-7 -10 124 64', 'aria-hidden': 'true', style: 'overflow: visible' },
       s('g', { transform: 'rotate(' + (rot === undefined ? -12 : rot) + ' 55 22)' },
         s('rect', { x: 18, y: 13, width: 64, height: 18, fill: c || '#F2C230' }),
         s('rect', { x: 18, y: 13, width: 64, height: 6, fill: '#fff', opacity: 0.3 }),
