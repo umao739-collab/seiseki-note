@@ -5,8 +5,11 @@
  *  1回目: 「せいせきノート」の Apps Script プロジェクトを新しく作り、コードを入れて、Webアプリとして公開する。
  *  2回目から: 同じプロジェクトのコードを新しくし、同じURLのまま公開しなおす。
  *
- * コードは、Google ドライブにある「せいせきノート_コード.json」（いちばん新しいもの）から読む。
+ * コードは、決めたフォルダの中にある「せいせきノート_コード.json」（いちばん新しいもの）から読む。
  * ★このプロジェクトの Google Cloud プロジェクトは、Apps Script API が有効なもの（gas-code-export）に変えておく。
+ * ★スクリプト プロパティ BUNDLE_FOLDER_ID に、コードを置くフォルダの ID を入れておく（共有ドライブのフォルダでもよい）。
+ *   フォルダの ID は、そのフォルダを開いたときの URL の「folders/」のうしろの文字。
+ *   ドライブ全体は探さない（ほかの人が同じ名前のファイルを置いても、それを読まないように）。
  */
 var BUNDLE_NAME = 'せいせきノート_コード.json';
 var BUNDLE_MARK = 'seiseki-note-bundle';
@@ -42,15 +45,24 @@ function install() {
   console.log('👉 プロジェクト: https://script.google.com/d/' + scriptId + '/edit');
 }
 
-/** ドライブにある「せいせきノート_コード.json」のうち、いちばん新しいものを読む。 */
+/** BUNDLE_FOLDER_ID のフォルダの中にある「せいせきノート_コード.json」のうち、いちばん新しいものを読む。 */
 function latestBundle_() {
-  var it = DriveApp.getFilesByName(BUNDLE_NAME);
-  var best = null;
+  var folderId = String(PropertiesService.getScriptProperties().getProperty('BUNDLE_FOLDER_ID') || '').trim();
+  if (!folderId) throw new Error('スクリプト プロパティ「BUNDLE_FOLDER_ID」に、コードを置くフォルダの ID を入れてください。');
+  var folder;
+  try { folder = DriveApp.getFolderById(folderId); } catch (e) {
+    throw new Error('BUNDLE_FOLDER_ID のフォルダを開けませんでした。ID が正しいか、このアカウントで開けるフォルダか、確かめてください。');
+  }
+  var it = folder.getFilesByName(BUNDLE_NAME);
+  var best = null, count = 0;
   while (it.hasNext()) {
     var f = it.next();
+    if (f.isTrashed()) continue;
+    count++;
     if (!best || f.getDateCreated() > best.getDateCreated()) best = f;
   }
-  if (!best) throw new Error('ドライブに「' + BUNDLE_NAME + '」が見つかりません。');
+  if (!best) throw new Error('フォルダ「' + folder.getName() + '」に「' + BUNDLE_NAME + '」が見つかりません。');
+  if (count > 1) console.log('ℹ️ フォルダに「' + BUNDLE_NAME + '」が ' + count + ' 個あります。いちばん新しいものを使います。');
   var b = JSON.parse(best.getBlob().getDataAsString('UTF-8'));
   if (!b || b.mark !== BUNDLE_MARK || !Array.isArray(b.files) || !b.files.length) throw new Error('「' + BUNDLE_NAME + '」の中身が正しくありません。');
   b.files.forEach(function (f) {
@@ -58,7 +70,7 @@ function latestBundle_() {
       throw new Error('「' + BUNDLE_NAME + '」の中身が正しくありません。');
     }
   });
-  console.log('📦 ' + best.getName() + '（ver.' + b.version + '・' + Utilities.formatDate(best.getDateCreated(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm') + ' に作成）を使います');
+  console.log('📦 ' + folder.getName() + ' ／ ' + best.getName() + '（ver.' + b.version + '・' + Utilities.formatDate(best.getDateCreated(), 'Asia/Tokyo', 'yyyy/MM/dd HH:mm') + ' に作成）を使います');
   return b;
 }
 
