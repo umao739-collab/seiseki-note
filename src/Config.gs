@@ -2,18 +2,20 @@
  * Config.gs — 設定とスキーマ定数の一次ソース。
  *
  * ★しくみは「ふりかえりシート 他校版」と同じ。
- *   - Webアプリは「デプロイした人（アプリ管理者）として実行」。データはアプリ管理者のドライブにだけ置き、だれとも共有しない。
+ *   - Webアプリは「アクセスしているユーザーとして実行」。先生それぞれの権限で、マスタ・年度データ・名簿シートを読み書きする。
+ *     そのため、データのファイルは先生全員が開ける場所（学校の共有ドライブなど）に置く。
+ *     画面から見られる・変えられるのは、担任・担当のクラスだけ（サーバー側で必ず確かめる）。
  *   - 本人は Session.getActiveUser() だけで決める。名簿・教職員にいない人は断る（拒否が既定）。
  *   - 先生は担当のクラスだけ、設定担当の先生は自分の学校だけ、を必ずサーバー側で確かめる。
  * ★ファイルIDやメールはコードに書かない（このリポジトリは公開されている）。Script Properties に置く。
  *   MASTER_SPREADSHEET_ID … マスタ（schools / teachers / dataFiles / schoolRosters / assignments）
- *   APP_FOLDER_ID         … アプリ管理者のマイドライブのフォルダ
+ *   APP_FOLDER_ID         … データのファイルを作るフォルダ（先生全員が開けるところ）
  *   APP_ADMINS            … アプリ管理者のメール（カンマ区切り）。setup() を実行した人が入る
  * ★デモ⇄本番の切り替えは BUILD_TARGET の1か所だけ。
  */
 var BUILD_TARGET = 'prod'; // 'demo' | 'prod'
 var APP_TITLE = 'せいせきノート';
-var APP_VERSION = '2.17.2';
+var APP_VERSION = '2.18.0';
 var TZ = 'Asia/Tokyo';
 var PROP = { masterId: 'MASTER_SPREADSHEET_ID', folderId: 'APP_FOLDER_ID', admins: 'APP_ADMINS' };
 

@@ -51,11 +51,21 @@ function requireClass_(ctx, classKey) {
 }
 
 /**
- * エディタから実行する管理関数の先頭で必ず呼ぶ。
- * Webアプリ経由では active=利用者 / effective=デプロイした人 になるので弾ける。
+ * エディタから実行する管理関数（setup など）の先頭で必ず呼ぶ。
+ * Webアプリは「アクセスしているユーザーとして実行」なので、先生が画面から管理関数を呼ぶこともできてしまう。
+ * そこで「このアプリの Apps Script プロジェクトの持ち主・編集者か」を、プロジェクトのファイルそのもので確かめる。
+ * 先生はプロジェクトを開けない（共有されていない）ので、ここで断られる。
  */
 function requireOwner_() {
-  var active = normEmail_(Session.getActiveUser().getEmail());
-  var effective = normEmail_(Session.getEffectiveUser().getEmail());
-  if (!active || active !== effective) throw new Error('この関数は、アプリ管理者がスクリプトエディタから実行してください。');
+  var me = normEmail_(Session.getActiveUser().getEmail());
+  var ok = false;
+  if (me) {
+    try {
+      var f = DriveApp.getFileById(ScriptApp.getScriptId());
+      var owner = f.getOwner();
+      ok = (!!owner && normEmail_(owner.getEmail()) === me) ||
+        f.getEditors().some(function (u) { return normEmail_(u.getEmail()) === me; });
+    } catch (e) { ok = false; }
+  }
+  if (!ok) throw new Error('この関数は、アプリの Apps Script プロジェクトの持ち主（編集者）が、スクリプトエディタから実行してください。');
 }

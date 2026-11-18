@@ -2,7 +2,7 @@
  * Setup.gs — エディタから実行する管理関数と、学校ごとの取り込み用名簿シート。（ふりかえりシート他校版の Setup.gs・SchoolRoster.gs と同じ考え方）
  *
  * ★GAS エディタで選べるのは末尾 `_` の無い関数だけなので、これらは公開関数になってしまう。
- *   そのため先頭で必ず requireOwner_() を呼ぶ（Webアプリ経由で先生が呼ぶと弾かれる）。
+ *   そのため先頭で必ず requireOwner_() を呼ぶ（プロジェクトの持ち主・編集者でない人が呼ぶと弾かれる）。
  */
 
 /** マスタ・フォルダ・今年度データを作る（何度実行しても同じ結果）。実行した人をアプリ管理者にする。 */
@@ -82,7 +82,7 @@ function startFiscalYear_(fiscalYear) {
     var info = ss.getSheets()[0];
     info.setName('info');
     info.getRange(1, 1, 2, 1).setNumberFormat('@').setValues([[APP_TITLE + ' 年度データ（' + s.schoolId + ' / ' + fy + '年度）'],
-      ['成績が入っています。このファイルは誰とも共有しないでください。']]);
+      ['成績が入っています。このファイルは直接書きかえないでください（入力は「せいせきノート」から）。']]);
     added.push([s.schoolId, fy, ss.getId(), DATA_STATUS.open]);
   });
   writeRows_(sh, added);
@@ -110,7 +110,7 @@ var SchoolRoster = (function () {
       info.getRange(1, 1, 3, 3).setNumberFormat('@').setValues([
         [SCHOOL_ROSTER_MARK, schoolId, school ? school.schoolName : ''],
         ['このファイルは「' + APP_TITLE + '」の取り込みアプリが書き込みます。', '', ''],
-        ['学校の設定担当の先生だけに共有されています。ほかの人と共有しないでください。', '', '']
+        ['名簿の取りこみは「せいせきノート」の学校の設定から行います。このファイルは直接書きかえないでください。', '', '']
       ]);
       ensureSheetWithHeader_(ss, 'roster', SCHEMA.schoolRoster);
       ensureSheetWithHeader_(ss, 'staff', SCHEMA.schoolStaff);
@@ -121,17 +121,25 @@ var SchoolRoster = (function () {
   }
   /** 共有を「その学校の設定担当だけ」にそろえる（持ち主は除く）。 */
   function syncEditors(id, schoolId) {
-    var allowed = Directory.listSetupTeacherEmails(schoolId);
-    var file = DriveApp.getFileById(id);
-    var owner = normEmail_(file.getOwner() ? file.getOwner().getEmail() : '');
-    var editors = file.getEditors().map(function (u) { return normEmail_(u.getEmail()); });
-    var viewers = file.getViewers().map(function (u) { return normEmail_(u.getEmail()); });
-    editors.concat(viewers).forEach(function (e) {
-      if (e && e !== owner && allowed.indexOf(e) === -1) {
-        if (editors.indexOf(e) !== -1) file.removeEditor(e); else file.removeViewer(e);
-      }
-    });
-    allowed.forEach(function (e) { if (editors.indexOf(e) === -1 && !(isDemoMode_() && /@example\.com$/.test(e))) file.addEditor(e); });
+    // 開いている人の権限で動くので、共有を変えられないこともある（共有ドライブの共有はドライブの設定で決まる）。
+    // 変えられなくても、学校の設定の画面は止めない。
+    try {
+      var allowed = Directory.listSetupTeacherEmails(schoolId);
+      var file = DriveApp.getFileById(id);
+      var owner = normEmail_(file.getOwner() ? file.getOwner().getEmail() : '');
+      var editors = file.getEditors().map(function (u) { return normEmail_(u.getEmail()); });
+      var viewers = file.getViewers().map(function (u) { return normEmail_(u.getEmail()); });
+      editors.concat(viewers).forEach(function (e) {
+        if (e && e !== owner && allowed.indexOf(e) === -1) {
+          try { if (editors.indexOf(e) !== -1) file.removeEditor(e); else file.removeViewer(e); } catch (x) { /* 共有ドライブのメンバーなどは外せない */ }
+        }
+      });
+      allowed.forEach(function (e) {
+        if (editors.indexOf(e) === -1 && !(isDemoMode_() && /@example\.com$/.test(e))) { try { file.addEditor(e); } catch (x) { /* 権限がなければそのまま */ } }
+      });
+    } catch (e) {
+      console.error('取り込み用名簿シートの共有をそろえられませんでした: ' + schoolId);
+    }
   }
   /** 取り込んだ名簿で、その学校の roster・staff シートをまるごと入れかえる。 */
   function write(id, schoolId, parsed) {

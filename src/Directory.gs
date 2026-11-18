@@ -58,7 +58,12 @@ var Directory = (function () {
     if (_cache) return _cache;
     var hit = _cacheGet();
     if (hit) { _cache = hit; return hit; }
-    var master = SpreadsheetApp.openById(getMasterId_());
+    var master;
+    // 開いている人の権限で読むので、データの場所（学校の共有ドライブ）を開けない人はここで止まる
+    var masterId = getMasterId_();
+    try { master = SpreadsheetApp.openById(masterId); } catch (e) {
+      throw appError_('せいせきノートのデータを開けませんでした。学校の共有ドライブを開ける、学校のアカウントで開いてください。');
+    }
     var c = {};
     MASTER_SHEETS.forEach(function (n) { c[n] = _rows(master, n); });
     c.roster = {}; c.staff = {};

@@ -58,9 +58,9 @@ run('S05 公開リポジトリなので、実在のメール・ファイルIDを
     ok(!/[A-Za-z0-9_-]{40,}/.test(s.replace(/data:image[^)]*\)/g, '')), f + ' にファイルIDのような文字');
   });
 });
-run('S06 Webアプリは「デプロイした人として実行」・学校のドメインの中だけ', () => {
+run('S06 Webアプリは「アクセスしているユーザーとして実行」・学校のドメインの中だけ', () => {
   const j = JSON.parse(read('appsscript.json'));
-  eq([j.webapp.executeAs, j.webapp.access], ['USER_DEPLOYING', 'DOMAIN']);
+  eq([j.webapp.executeAs, j.webapp.access], ['USER_ACCESSING', 'DOMAIN']);
 });
 run('S07 外から読みこむのは Google Fonts だけ', () => {
   htmlFiles.forEach((f) => (read(f).match(/https?:\/\/[^\s"')]+/g) || []).forEach((u) => {
